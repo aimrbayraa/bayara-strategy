@@ -1,0 +1,2124 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS TUSAM v3.0 — Auto-Optimize Best Saver</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://s3.tradingview.com/tv.js"></script>
+<style>
+  body { background: #08050f; color: #ede9fe; font-family: system-ui, -apple-system, sans-serif; }
+  .glass { background: rgba(22, 15, 42, 0.88); backdrop-filter: blur(18px); border: 1px solid rgba(168, 85, 247, 0.20); }
+  .inner { background: rgba(15, 10, 32, 0.72); border: 1px solid rgba(168, 85, 247, 0.14); }
+  .grad { background: linear-gradient(135deg, #a855f7, #22d3ee); color: #08050f; font-weight: 800; }
+  .grad:hover { filter: brightness(1.1); }
+  .badge { display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.35); border-radius: 3px; }
+  .val-pos { color: #0ecb81; } .val-neg { color: #f6465d; }
+  .scanning-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22d3ee; animation: sd 1s infinite; }
+  @keyframes sd { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+  select { appearance: none; }
+  .tab-btn { transition: all 0.2s; border-bottom: 2px solid transparent; }
+  .tab-btn.active { border-color: #22d3ee; color: #22d3ee; background: rgba(34, 211, 238, 0.06); }
+  #tv_chart_container { height: 100%; width: 100%; position: relative; background: #0a0618; }
+  #tv_chart_container iframe { width: 100%; height: 100%; border: none; display: block; }
+  .bot-active { animation: pulse-red 2s infinite; }
+  @keyframes pulse-red { 0%,100% { box-shadow: 0 0 0 rgba(225,29,72,0); } 50% { box-shadow: 0 0 25px rgba(225,29,72,0.7); } }
+  .score-badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 700; }
+  .score-full { background: rgba(14,203,129,0.25); color: #0ecb81; }
+  .score-miss { background: rgba(100,100,100,0.2); color: #666; }
+  .hidden { display: none !important; }
+  .status-scanning { color: #22d3ee; animation: sd 0.6s infinite; }
+  .status-signal { color: #0ecb81; font-weight: 700; }
+  .status-filtered { color: #f0b90b; }
+  .status-wait { color: #666; }
+  .scan-row:hover { background: rgba(168,85,247,0.1); cursor: pointer; }
+  .scan-row.active { background: rgba(34,211,238,0.12); border-left: 2px solid #22d3ee; }
+  .version-tag { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; }
+  .v-ai { background: rgba(168,85,247,0.2); color: #a855f7; }
+  .v-momentum { background: rgba(34,211,238,0.2); color: #22d3ee; }
+  .v-pattern { background: rgba(14,203,129,0.2); color: #0ecb81; }
+  .regime-tag { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 8px; font-weight: 700; }
+  .reg-trend-up { background: rgba(14,203,129,0.2); color: #0ecb81; }
+  .reg-trend-down { background: rgba(246,70,93,0.2); color: #f6465d; }
+  .reg-range { background: rgba(168,85,247,0.2); color: #a855f7; }
+  .reg-volatile { background: rgba(240,185,11,0.25); color: #f0b90b; }
+  .reg-quiet { background: rgba(120,120,120,0.2); color: #888; }
+  .elo-bar { height: 3px; background: linear-gradient(90deg, #22d3ee, #a855f7); border-radius: 2px; }
+  .best-glow { animation: best-pulse 2s infinite; }
+  @keyframes best-pulse { 0%,100% { box-shadow: 0 0 5px rgba(255,215,0,0.3); } 50% { box-shadow: 0 0 25px rgba(255,215,0,0.8); } }
+  .progress-bar { height: 4px; background: rgba(15,10,32,0.9); border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #a855f7, #22d3ee); transition: width 0.5s; }
+  .best-badge { background: linear-gradient(135deg, #f59e0b, #fbbf24); color: #08050f; font-weight: 900; padding: 2px 8px; border-radius: 4px; font-size: 9px; }
+</style>
+</head>
+<body class="p-2 max-w-[1700px] mx-auto min-h-screen flex flex-col justify-between">
+
+<div>
+<header class="glass rounded-2xl p-3 mb-2 flex flex-wrap justify-between gap-2 items-center">
+  <div class="flex items-center gap-2 flex-wrap">
+    <div class="grad px-4 py-2 rounded-xl text-sm tracking-wider flex items-center gap-2">
+      <i class="fa-solid fa-dna"></i> NEXUS TUSAM v3.0
+    </div>
+    <div class="inner px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-[10px]">
+      <span class="scanning-dot"></span>
+      <span class="text-emerald-300" id="feedStatus">READY</span>
+    </div>
+    <div class="inner px-2.5 py-1.5 rounded-lg text-[10px]"><span class="text-gray-500">REGIME</span> <b id="regimeVal" class="text-cyan-300">—</b></div>
+    <div class="inner px-2.5 py-1.5 rounded-lg text-[10px]"><span class="text-gray-500">VERSION</span> <b id="versionVal" class="text-purple-300">—</b></div>
+    <div class="inner px-2.5 py-1.5 rounded-lg text-[10px]"><span class="text-gray-500">ELO</span> <b id="eloVal" class="text-amber-300">—</b></div>
+    <div class="inner px-2.5 py-1.5 rounded-lg text-[10px]"><span class="text-gray-500">BEST</span> <b id="bestScoreVal" class="text-yellow-300">—</b></div>
+    <div class="inner px-2.5 py-1.5 rounded-lg text-[10px]"><span class="text-gray-500">NEXT EVAL</span> <b id="nextEvalVal" class="text-fuchsia-300">—</b></div>
+  </div>
+  <div class="flex flex-wrap gap-2 items-center text-[11px]">
+    <div class="inner px-2.5 py-1.5 rounded-lg"><span class="text-gray-400 text-[9px]">BAL</span> <span id="balVal" class="font-bold text-white">$1,000</span></div>
+    <div class="inner px-2.5 py-1.5 rounded-lg"><span class="text-gray-400 text-[9px]">PNL</span> <span id="pnlVal" class="font-bold">$0.00</span></div>
+    <div class="inner px-2.5 py-1.5 rounded-lg"><span class="text-gray-400 text-[9px]">WR</span> <span id="wrVal" class="font-bold text-purple-300">—</span></div>
+    <div class="inner px-2.5 py-1.5 rounded-lg"><span class="text-gray-400 text-[9px]">DD</span> <span id="ddVal" class="font-bold text-amber-300">0%</span></div>
+  </div>
+</header>
+
+<nav class="glass rounded-2xl p-1 mb-2 flex flex-wrap gap-1 text-[11px]">
+  <button id="tab-live" class="tab-btn active px-3 py-2 rounded-lg font-semibold flex-1 min-w-[70px]"><i class="fa-solid fa-wave-square"></i> LIVE</button>
+  <button id="tab-backtest" class="tab-btn px-3 py-2 rounded-lg font-semibold flex-1 min-w-[70px]"><i class="fa-solid fa-flask"></i> BACKTEST</button>
+  <button id="tab-analytics" class="tab-btn px-3 py-2 rounded-lg font-semibold flex-1 min-w-[70px]"><i class="fa-solid fa-chart-pie"></i> ANALYTICS</button>
+  <button id="tab-evolution" class="tab-btn px-3 py-2 rounded-lg font-semibold flex-1 min-w-[70px]"><i class="fa-solid fa-dna"></i> TUSAM</button>
+  <button id="tab-brain" class="tab-btn px-3 py-2 rounded-lg font-semibold flex-1 min-w-[70px]"><i class="fa-solid fa-brain"></i> BRAIN</button>
+  <button id="tab-optimizer" class="tab-btn px-3 py-2 rounded-lg font-semibold flex-1 min-w-[70px]"><i class="fa-solid fa-trophy"></i> BEST</button>
+  <button id="tab-checklist" class="tab-btn px-3 py-2 rounded-lg font-semibold flex-1 min-w-[70px]"><i class="fa-solid fa-list-check"></i> CHECK</button>
+</nav>
+
+<!-- LIVE TAB -->
+<div id="tab-content-live">
+  <div class="glass rounded-2xl p-3 mb-2 flex flex-wrap items-center gap-3">
+    <button id="botBtn" class="grad px-6 py-3 rounded-xl text-base font-bold flex items-center gap-2">
+      <i class="fa-solid fa-play"></i> <span id="botBtnTxt">AI БОТ ЭХЛҮҮЛЭХ</span>
+    </button>
+    <button id="liveBtn" class="bg-emerald-700/80 hover:bg-emerald-600 text-white px-3 py-3 rounded-xl text-[11px] font-semibold flex items-center gap-1.5 transition">
+      <i class="fa-solid fa-money-bill-transfer"></i> <span id="liveModeTxt">PAPER</span>
+    </button>
+    <button id="resetBtn" class="bg-slate-600/80 hover:bg-slate-500 text-white px-3 py-3 rounded-xl text-[11px] font-semibold flex items-center gap-1.5 transition">
+      <i class="fa-solid fa-undo"></i> Reset
+    </button>
+    <div class="flex flex-wrap gap-2 text-[11px] ml-auto">
+      <label class="inner rounded-lg px-2 py-1.5 flex items-center gap-1"><span class="text-gray-400">TF</span>
+        <select id="tfSel" class="bg-transparent text-purple-300 font-bold outline-none cursor-pointer"><option value="1m">1м</option><option value="3m">3м</option><option value="5m" selected>5м</option></select></label>
+      <label class="inner rounded-lg px-2 py-1.5 flex items-center gap-1"><span class="text-gray-400">HTF</span>
+        <select id="htfSel" class="bg-transparent text-cyan-300 font-bold outline-none cursor-pointer"><option value="1h">1H</option><option value="4h" selected>4H</option></select></label>
+      <label class="inner rounded-lg px-2 py-1.5 flex items-center gap-1"><span class="text-gray-400">Score</span>
+        <select id="scoreSel" class="bg-transparent text-amber-300 font-bold outline-none cursor-pointer"><option value="3">3/6</option><option value="4" selected>4/6</option><option value="5">5/6</option></select></label>
+      <label class="inner rounded-lg px-2 py-1.5 flex items-center gap-1"><span class="text-gray-400">Risk%</span>
+        <select id="riskSel" class="bg-transparent text-fuchsia-300 font-bold outline-none cursor-pointer"><option>0.25</option><option selected>0.5</option><option>0.75</option><option>1</option></select></label>
+      <label class="inner rounded-lg px-2 py-1.5 flex items-center gap-1"><span class="text-gray-400">Speed</span>
+        <select id="speedSel" class="bg-transparent text-cyan-300 font-bold outline-none cursor-pointer"><option value="slow">🐢</option><option value="normal">⚡</option><option value="fast" selected>🚀</option><option value="turbo">💨</option></select></label>
+    </div>
+  </div>
+
+  <!-- AUTO-OPT STATUS BAR -->
+  <div class="glass rounded-2xl p-2 mb-2 flex flex-wrap items-center gap-3">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-trophy text-yellow-400"></i>
+      <span class="text-[10px] font-bold text-yellow-300">AUTO-OPTIMIZE</span>
+      <span id="autoOptBadge" class="best-badge hidden">🏆 BEST SAVED</span>
+    </div>
+    <div class="flex-1 min-w-[200px]">
+      <div class="flex justify-between text-[9px] mb-1">
+        <span class="text-gray-500">Next evaluation</span>
+        <span id="evalProgressTxt" class="text-cyan-300 font-mono">0/10 trades</span>
+      </div>
+      <div class="progress-bar"><div id="evalProgressBar" class="progress-fill" style="width:0%"></div></div>
+    </div>
+    <div class="flex gap-2 text-[10px]">
+      <div class="inner rounded px-2 py-1"><span class="text-gray-500">EVALS:</span> <b id="evalCount" class="text-purple-300">0</b></div>
+      <div class="inner rounded px-2 py-1"><span class="text-gray-500">IMPROVEMENTS:</span> <b id="bestCount" class="text-yellow-300">0</b></div>
+      <button id="forceEvalBtn" class="bg-yellow-600/60 hover:bg-yellow-600 text-white px-2 py-1 rounded text-[10px] font-bold transition">Force Eval</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-2">
+    <div class="lg:col-span-3 glass rounded-2xl p-2.5">
+      <div class="flex justify-between items-center mb-1.5"><h3 class="text-[11px] font-bold text-purple-300 uppercase tracking-widest">// SCANNER</h3><span id="scanStatus" class="text-[10px] text-cyan-300 font-mono">idle</span></div>
+      <div class="inner rounded-lg p-2 mb-2 text-[10px] grid grid-cols-4 gap-1 text-center font-mono">
+        <div><div class="text-gray-500">UNIV</div><b id="pqSize" class="text-cyan-300">0</b></div>
+        <div><div class="text-gray-500">CYC</div><b id="cycleCount" class="text-purple-300">0</b></div>
+        <div><div class="text-gray-500">SCAN</div><b id="totScanned" class="text-cyan-300">0</b></div>
+        <div><div class="text-gray-500">SIG</div><b id="sigCount" class="text-emerald-300">0</b></div>
+      </div>
+      <div class="inner rounded-lg p-1.5 mb-2 text-[9px] flex justify-between">
+        <span class="text-gray-500">Cycle:</span>
+        <b id="cycleTime" class="text-emerald-300 font-mono">—</b>
+      </div>
+      <div class="overflow-auto max-h-[420px] text-[11px]">
+        <table class="w-full text-left">
+          <thead class="sticky top-0 bg-[#0f0a20] z-10"><tr class="text-purple-400/70 border-b border-purple-500/20 text-[9px] uppercase">
+            <th class="pl-1">Sym</th><th>Reg</th><th>V</th><th class="text-right pr-1">Sc</th><th class="text-right pr-1">St</th>
+          </tr></thead>
+          <tbody id="scanBody"><tr><td colspan="5" class="text-center py-6 text-gray-500">Эхэлж байна...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="lg:col-span-6 glass rounded-2xl p-2.5 flex flex-col">
+      <div class="flex justify-between items-center mb-1.5 flex-wrap gap-2">
+        <div class="flex items-center gap-2">
+          <h3 class="text-[11px] font-bold text-cyan-300 uppercase tracking-widest">// LIVE CHART</h3>
+          <span id="chartSym" class="badge bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">—</span>
+        </div>
+        <span id="chartPrice" class="text-sm font-bold text-white font-mono">—</span>
+      </div>
+      <div id="chartWrap" class="relative bg-[#0a0618] w-full rounded-lg overflow-hidden inner" style="height:440px">
+        <div id="tv_chart_container"></div>
+        <div class="absolute top-1 left-1 text-[9px] bg-black/70 rounded px-2 py-1 font-mono pointer-events-none" id="hctpOverlay"></div>
+      </div>
+      <div class="mt-1.5 flex flex-wrap gap-2 text-[10px]">
+        <span id="backendStatus" class="text-gray-500">Backend: —</span>
+        <span class="ml-auto text-gray-500" id="autoChartInfo">Auto-selecting best</span>
+      </div>
+    </div>
+
+    <div class="lg:col-span-3 glass rounded-2xl p-2.5">
+      <div class="flex justify-between items-center mb-1.5"><h3 class="text-[11px] font-bold text-fuchsia-300 uppercase tracking-widest">// SIGNAL</h3></div>
+      <div id="signalDetail" class="space-y-1.5 text-[11px]">
+        <div class="text-gray-500 text-center py-4">Суралцаж байна...</div>
+      </div>
+      <div class="mt-2 inner rounded-lg p-2">
+        <div class="flex justify-between text-[11px] mb-1"><span class="text-gray-400">Confidence</span><b id="compScore" class="text-white text-sm">—</b></div>
+        <div class="h-2 bg-black/40 rounded-full overflow-hidden"><div id="compBar" class="h-full bg-gradient-to-r from-purple-500 to-cyan-400" style="width:0%"></div></div>
+        <div id="compSignal" class="text-[11px] mt-1.5 text-center font-bold text-gray-400">—</div>
+        <div id="filterInfo" class="text-[9px] mt-1.5 text-center text-gray-500 font-mono">—</div>
+      </div>
+      <!-- Best Config live view -->
+      <div class="mt-2 inner rounded-lg p-2 best-glow">
+        <div class="flex justify-between items-center mb-1.5">
+          <span class="text-[10px] text-yellow-300 font-bold">🏆 ACTIVE BEST CONFIG</span>
+          <span id="bestAge" class="text-[8px] text-gray-500 font-mono">—</span>
+        </div>
+        <div id="activeBestCfg" class="space-y-0.5 text-[9px]">
+          <div class="text-gray-500 text-center py-2">Хүлээж байна...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-2 mt-2">
+    <div class="lg:col-span-4 glass rounded-2xl p-2.5 text-xs">
+      <div class="flex justify-between items-center pb-1 border-b border-purple-500/20 mb-2"><h3 class="font-bold text-purple-300 uppercase text-[10px] tracking-widest">POSITIONS</h3><span id="posCount" class="text-[10px] text-gray-400 font-mono">0</span></div>
+      <div id="posList" class="space-y-2 max-h-[240px] overflow-auto text-[10px]"><div class="text-gray-500 text-center py-4">Байрлалгүй</div></div>
+    </div>
+    <div class="lg:col-span-4 glass rounded-2xl p-2.5 text-xs">
+      <div class="flex justify-between items-center pb-1 border-b border-purple-500/20 mb-2"><h3 class="font-bold text-cyan-300 uppercase text-[10px] tracking-widest">TRADES</h3><span id="histCount" class="text-[10px] text-gray-400 font-mono">0</span></div>
+      <div class="max-h-[240px] overflow-auto">
+        <table class="w-full text-right text-[10px]"><thead class="sticky top-0 bg-[#0f0a20]"><tr class="text-purple-400/70 border-b border-purple-500/20"><th class="text-left pl-1">Time</th><th class="text-left">Sym</th><th>V</th><th>R</th><th>Net</th></tr></thead>
+        <tbody id="histBody"><tr><td colspan="5" class="text-center py-4 text-gray-500">—</td></tr></tbody></table>
+      </div>
+    </div>
+    <div class="lg:col-span-4 glass rounded-2xl p-2.5 text-xs">
+      <div class="flex justify-between items-center pb-1 border-b border-purple-500/20 mb-2"><h3 class="font-bold text-amber-300 uppercase text-[10px] tracking-widest">LOG</h3><button id="clearLogBtn" class="text-[10px] text-gray-400 hover:text-white transition">Clear</button></div>
+      <div id="log" class="bg-[#08050f] p-2 rounded border border-purple-500/15 h-[240px] overflow-auto text-[10px] font-mono space-y-1"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BACKTEST TAB -->
+<div id="tab-content-backtest" class="hidden">
+  <div class="grid grid-cols-1 lg:grid-cols-4 gap-2">
+    <div class="glass rounded-2xl p-3">
+      <h3 class="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-3">// CONFIG</h3>
+      <div class="space-y-2 text-xs">
+        <label class="inner rounded-lg p-2 block"><div class="text-gray-400 mb-1 text-[10px]">Symbol</div>
+          <select id="btSym" class="w-full bg-transparent text-white font-bold outline-none cursor-pointer"></select></label>
+        <label class="inner rounded-lg p-2 block"><div class="text-gray-400 mb-1 text-[10px]">TF</div>
+          <select id="btTf" class="w-full bg-transparent text-purple-300 font-bold outline-none cursor-pointer"><option value="1m">1m</option><option value="3m">3m</option><option value="5m" selected>5m</option></select></label>
+        <label class="inner rounded-lg p-2 block"><div class="text-gray-400 mb-1 text-[10px]">Bars</div>
+          <select id="btBars" class="w-full bg-transparent text-emerald-300 font-bold outline-none cursor-pointer"><option>500</option><option selected>1000</option><option>1500</option></select></label>
+        <label class="inner rounded-lg p-2 block"><div class="text-gray-400 mb-1 text-[10px]">Balance</div>
+          <input id="btBal" type="number" value="1000" class="w-full bg-transparent text-white font-bold outline-none"></label>
+        <label class="inner rounded-lg p-2 block"><div class="text-gray-400 mb-1 text-[10px]">Min Score</div>
+          <input id="btMinScore" type="number" value="4" class="w-full bg-transparent text-amber-300 font-bold outline-none"></label>
+        <label class="inner rounded-lg p-2 block"><div class="text-gray-400 mb-1 text-[10px]">Risk %</div>
+          <input id="btRisk" type="number" value="0.5" step="0.1" class="w-full bg-transparent text-fuchsia-300 font-bold outline-none"></label>
+        <label class="inner rounded-lg p-2 flex items-center gap-2"><input type="checkbox" id="btEvo" checked class="accent-cyan-400 cursor-pointer"><span class="text-gray-400 text-[10px]">TUSAM v3 + AutoOpt</span></label>
+      </div>
+    </div>
+    <div class="glass rounded-2xl p-3 lg:col-span-3">
+      <h3 class="text-xs font-bold text-purple-300 uppercase tracking-widest mb-3">// RUN</h3>
+      <button id="btRunBtn" class="grad w-full py-3 rounded-lg text-sm font-bold mb-2 flex items-center justify-center gap-2">
+        <i class="fa-solid fa-flask"></i> RUN BACKTEST
+      </button>
+      <div id="btStatus" class="text-[11px] text-cyan-300 text-center font-mono">Ready</div>
+      <div id="btBestLbl" class="text-[10px] text-yellow-300 text-center mt-2 font-mono"></div>
+    </div>
+  </div>
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-2 mt-2">
+    <div class="glass rounded-2xl p-3 lg:col-span-2">
+      <h3 class="text-xs font-bold text-purple-300 uppercase tracking-widest mb-2">// EQUITY</h3>
+      <div class="relative bg-[#0a0618] w-full rounded-lg overflow-hidden inner" style="height:250px"><canvas id="btEqCanvas" style="width:100%;height:100%;display:block"></canvas></div>
+    </div>
+    <div class="glass rounded-2xl p-3">
+      <h3 class="text-xs font-bold text-emerald-300 uppercase tracking-widest mb-2">// METRICS</h3>
+      <div id="btMetrics" class="space-y-1 text-[11px]"><div class="text-gray-500 text-center py-4">Run дарж ажиллуулна уу</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ANALYTICS TAB -->
+<div id="tab-content-analytics" class="hidden">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-2">
+    <div class="glass rounded-2xl p-3"><h3 class="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-2">// RECENT TRADES</h3>
+      <div id="attribTable" class="text-[11px]">—</div></div>
+    <div class="glass rounded-2xl p-3"><h3 class="text-xs font-bold text-fuchsia-300 uppercase tracking-widest mb-2">// METRICS</h3>
+      <div id="advMetrics" class="space-y-1 text-[11px]">—</div></div>
+    <div class="glass rounded-2xl p-3 lg:col-span-2"><h3 class="text-xs font-bold text-amber-300 uppercase tracking-widest mb-2">// EQUITY CURVE</h3>
+      <div class="relative bg-[#0a0618] w-full rounded-lg overflow-hidden inner" style="height:220px"><canvas id="liveEqCanvas" style="width:100%;height:100%;display:block"></canvas></div></div>
+  </div>
+</div>
+
+<!-- TUSAM EVOLUTION TAB -->
+<div id="tab-content-evolution" class="hidden">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-2">
+    <div class="glass rounded-2xl p-3">
+      <h3 class="text-xs font-bold text-purple-300 uppercase tracking-widest mb-3">🧬 ELO VERSION RANKING</h3>
+      <div id="versionCards" class="space-y-2"></div>
+    </div>
+    <div class="glass rounded-2xl p-3 lg:col-span-2">
+      <h3 class="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-2">// EQUITY EVOLUTION</h3>
+      <div class="relative bg-[#0a0618] w-full rounded-lg overflow-hidden inner" style="height:250px"><canvas id="evoEqCanvas" style="width:100%;height:100%;display:block"></canvas></div>
+      <div class="grid grid-cols-6 gap-2 mt-2 text-[11px]">
+        <div class="inner rounded p-2"><div class="text-gray-500 text-[9px]">CAPITAL</div><b id="evoM1" class="text-white">$1,000</b></div>
+        <div class="inner rounded p-2"><div class="text-gray-500 text-[9px]">TRADES</div><b id="evoM2" class="text-cyan-300">0</b></div>
+        <div class="inner rounded p-2"><div class="text-gray-500 text-[9px]">MFE×</div><b id="evoM3" class="text-emerald-300">1.50</b></div>
+        <div class="inner rounded p-2"><div class="text-gray-500 text-[9px]">SL×</div><b id="evoM4" class="text-rose-400">1.50</b></div>
+        <div class="inner rounded p-2"><div class="text-gray-500 text-[9px]">CONF</div><b id="evoM5" class="text-fuchsia-300">0.12</b></div>
+        <div class="inner rounded p-2"><div class="text-gray-500 text-[9px]">BUFFER</div><b id="evoM6" class="text-amber-300">0</b></div>
+      </div>
+    </div>
+    <div class="glass rounded-2xl p-3 lg:col-span-3">
+      <div class="flex justify-between items-center mb-2">
+        <h3 class="text-xs font-bold text-amber-300 uppercase tracking-widest">// JOURNAL</h3>
+        <button id="evoExportBtn" class="text-[10px] bg-purple-600/40 hover:bg-purple-600 text-white px-3 py-1 rounded transition">Export JSON</button>
+      </div>
+      <div id="evoJournal" class="max-h-[300px] overflow-auto text-[10px]"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BRAIN TAB -->
+<div id="tab-content-brain" class="hidden">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-2">
+    <div class="glass rounded-2xl p-3 lg:col-span-2">
+      <h3 class="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-3">// 🧠 ENSEMBLE BRAIN</h3>
+      <div class="grid grid-cols-3 gap-2 mb-3">
+        <div class="inner rounded p-2">
+          <div class="text-[9px] text-gray-500 mb-1">MODEL A (lr=0.02)</div>
+          <div class="text-[10px]"><span class="text-gray-400">Pred:</span> <b id="mlpA_pred" class="text-cyan-300">—</b></div>
+          <div class="text-[10px]"><span class="text-gray-400">Loss:</span> <b id="mlpA_loss" class="text-rose-400">—</b></div>
+        </div>
+        <div class="inner rounded p-2">
+          <div class="text-[9px] text-gray-500 mb-1">MODEL B (lr=0.05)</div>
+          <div class="text-[10px]"><span class="text-gray-400">Pred:</span> <b id="mlpB_pred" class="text-cyan-300">—</b></div>
+          <div class="text-[10px]"><span class="text-gray-400">Loss:</span> <b id="mlpB_loss" class="text-rose-400">—</b></div>
+        </div>
+        <div class="inner rounded p-2">
+          <div class="text-[9px] text-gray-500 mb-1">MODEL C (lr=0.10)</div>
+          <div class="text-[10px]"><span class="text-gray-400">Pred:</span> <b id="mlpC_pred" class="text-cyan-300">—</b></div>
+          <div class="text-[10px]"><span class="text-gray-400">Loss:</span> <b id="mlpC_loss" class="text-rose-400">—</b></div>
+        </div>
+      </div>
+      <div class="inner rounded p-2 mb-3">
+        <div class="text-[10px] text-purple-300 font-bold mb-1.5">ENSEMBLE OUTPUT</div>
+        <div class="grid grid-cols-3 gap-2 text-[10px]">
+          <div><div class="text-gray-500">Mean</div><b id="ensMean" class="text-emerald-300">—</b></div>
+          <div><div class="text-gray-500">Uncertainty</div><b id="ensUnc" class="text-rose-300">—</b></div>
+          <div><div class="text-gray-500">Agreement</div><b id="ensAgree" class="text-amber-300">—</b></div>
+        </div>
+      </div>
+      <div class="inner rounded p-2">
+        <div class="text-[10px] text-purple-300 font-bold mb-1.5">REGIME PERFORMANCE</div>
+        <div id="regimeModels" class="space-y-1 text-[10px]"></div>
+      </div>
+    </div>
+    <div class="glass rounded-2xl p-3">
+      <h3 class="text-xs font-bold text-fuchsia-300 uppercase tracking-widest mb-2">// REPLAY BUFFER</h3>
+      <div class="inner rounded p-2 mb-2">
+        <div class="text-[10px] space-y-1">
+          <div class="flex justify-between"><span class="text-gray-400">Size:</span><b id="bufferSize" class="text-cyan-300">0</b></div>
+          <div class="flex justify-between"><span class="text-gray-400">Capacity:</span><b class="text-gray-500">500</b></div>
+          <div class="flex justify-between"><span class="text-gray-400">Avg Reward:</span><b id="bufferReward" class="text-emerald-300">—</b></div>
+          <div class="flex justify-between"><span class="text-gray-400">Win Rate:</span><b id="bufferWR" class="text-amber-300">—</b></div>
+        </div>
+      </div>
+      <div class="inner rounded p-2">
+        <div class="text-[10px] space-y-1">
+          <div class="flex justify-between"><span class="text-gray-400">Batches:</span><b id="trainBatches" class="text-purple-300">0</b></div>
+          <div class="flex justify-between"><span class="text-gray-400">Last Loss:</span><b id="trainLoss" class="text-rose-400">—</b></div>
+        </div>
+      </div>
+      <button id="brainRetrainBtn" class="mt-2 w-full bg-purple-600/40 hover:bg-purple-600 text-white py-2 rounded text-[11px] font-bold transition">
+        <i class="fa-solid fa-rotate"></i> FORCE RETRAIN
+      </button>
+    </div>
+    <div class="glass rounded-2xl p-3 lg:col-span-3">
+      <h3 class="text-xs font-bold text-amber-300 uppercase tracking-widest mb-2">// 14 FEATURES</h3>
+      <div id="featureList" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 text-[10px]"></div>
+    </div>
+  </div>
+</div>
+
+<!-- OPTIMIZER / BEST TAB -->
+<div id="tab-content-optimizer" class="hidden">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-2">
+    <div class="glass rounded-2xl p-3 lg:col-span-2">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-xs font-bold text-yellow-300 uppercase tracking-widest">🏆 BEST CONFIG (CURRENT CHAMPION)</h3>
+        <span id="bestTimestamp" class="text-[10px] text-gray-500 font-mono">—</span>
+      </div>
+      <div id="bestConfigCard" class="inner rounded-lg p-4 best-glow mb-3">
+        <div class="text-gray-500 text-center py-6 text-[11px]">Хараахан best config бий болоогүй (20+ trade хэрэгтэй)</div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div class="inner rounded p-2"><div class="text-gray-500 text-[9px]">COMPOSITE SCORE</div><b id="bestScore" class="text-yellow-300 text-lg">—</b></div>
+        <div class="inner rounded p-2"><div class="text-gray-500 text-[9px]">WIN RATE</div><b id="bestWR" class="text-emerald-300 text-lg">—</b></div>
+        <div class="inner rounded p-2"><div class="text-gray-500 text-[9px]">AVG R</div><b id="bestAvgR" class="text-cyan-300 text-lg">—</b></div>
+        <div class="inner rounded p-2"><div class="text-gray-500 text-[9px]">SHARPE</div><b id="bestSharpe" class="text-fuchsia-300 text-lg">—</b></div>
+      </div>
+    </div>
+    <div class="glass rounded-2xl p-3">
+      <h3 class="text-xs font-bold text-purple-300 uppercase tracking-widest mb-2">// OPTIMIZER STATUS</h3>
+      <div class="space-y-2 text-[11px]">
+        <div class="inner rounded p-2">
+          <div class="flex justify-between mb-1"><span class="text-gray-400">Auto-Apply Best</span><b id="autoApplyStatus" class="text-emerald-300">ON</b></div>
+          <div class="flex justify-between mb-1"><span class="text-gray-400">Eval Interval</span><b class="text-cyan-300">10 trades</b></div>
+          <div class="flex justify-between mb-1"><span class="text-gray-400">Min Sample</span><b class="text-cyan-300">20 trades</b></div>
+        </div>
+        <div class="inner rounded p-2">
+          <div class="flex justify-between mb-1"><span class="text-gray-400">Total Evals</span><b id="optEvals" class="text-purple-300">0</b></div>
+          <div class="flex justify-between mb-1"><span class="text-gray-400">Improvements</span><b id="optImpr" class="text-yellow-300">0</b></div>
+          <div class="flex justify-between mb-1"><span class="text-gray-400">Last Score</span><b id="optLastScore" class="text-emerald-300">—</b></div>
+        </div>
+        <button id="optApplyBtn" class="w-full bg-yellow-600/60 hover:bg-yellow-600 text-white py-2 rounded text-[11px] font-bold transition">
+          <i class="fa-solid fa-crown"></i> APPLY BEST NOW
+        </button>
+        <button id="optExportBtn" class="w-full bg-purple-600/40 hover:bg-purple-600 text-white py-2 rounded text-[11px] font-bold transition">
+          <i class="fa-solid fa-download"></i> EXPORT BEST
+        </button>
+      </div>
+    </div>
+    <div class="glass rounded-2xl p-3 lg:col-span-3">
+      <div class="flex justify-between items-center mb-2">
+        <h3 class="text-xs font-bold text-amber-300 uppercase tracking-widest">// EVOLUTION HISTORY</h3>
+        <span id="historyCount" class="text-[10px] text-gray-500 font-mono">0 snapshots</span>
+      </div>
+      <div id="bestHistory" class="max-h-[350px] overflow-auto text-[10px]"></div>
+    </div>
+    <div class="glass rounded-2xl p-3 lg:col-span-3">
+      <h3 class="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-2">// SCORE EVOLUTION</h3>
+      <div class="relative bg-[#0a0618] w-full rounded-lg overflow-hidden inner" style="height:200px">
+        <canvas id="scoreCanvas" style="width:100%;height:100%;display:block"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CHECKLIST TAB -->
+<div id="tab-content-checklist" class="hidden">
+  <div class="glass rounded-2xl p-4 max-w-3xl mx-auto">
+    <h3 class="text-lg font-bold text-amber-300 mb-3 flex items-center gap-2"><i class="fa-solid fa-list-check"></i> TUSAM v3.0 — Auto-Optimize Checklist</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+      <div class="inner rounded-lg p-3">
+        <div class="text-purple-300 font-bold mb-2">// AUTO-OPT FLOW</div>
+        <div class="space-y-1.5 text-[12px]">
+          <div class="flex items-center gap-2"><span class="text-emerald-400">1.</span><span>Trade нээгдэнэ → MFE/MAE track</span></div>
+          <div class="flex items-center gap-2"><span class="text-emerald-400">2.</span><span>Trade хаагдана → learner сурна</span></div>
+          <div class="flex items-center gap-2"><span class="text-emerald-400">3.</span><span>10 trade тутам → auto-evaluate</span></div>
+          <div class="flex items-center gap-2"><span class="text-emerald-400">4.</span><span>Score ↑ бол → BEST save</span></div>
+          <div class="flex items-center gap-2"><span class="text-emerald-400">5.</span><span>Next trade-д BEST apply</span></div>
+          <div class="flex items-center gap-2"><span class="text-emerald-400">6.</span><span>localStorage-д persist</span></div>
+        </div>
+      </div>
+      <div class="inner rounded-lg p-3">
+        <div class="text-rose-300 font-bold mb-2">// COMPOSITE SCORE</div>
+        <div class="space-y-1.5 text-[12px]">
+          <div class="flex items-center gap-2"><span class="text-rose-400">⚠</span><span>WR × 2.0 (win rate жин)</span></div>
+          <div class="flex items-center gap-2"><span class="text-rose-400">⚠</span><span>AvgR × 0.5 (R-multiple жин)</span></div>
+          <div class="flex items-center gap-2"><span class="text-rose-400">⚠</span><span>Sharpe × 0.3 (тогтвортой байдал)</span></div>
+          <div class="flex items-center gap-2"><span class="text-rose-400">⚠</span><span>≥ 20 trade шаардлагатай</span></div>
+          <div class="flex items-center gap-2"><span class="text-rose-400">⚠</span><span>Rolling 30 trade window</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="inner rounded-lg p-3 mt-3">
+      <div class="text-cyan-300 font-bold mb-2">// 🏆 BEST CONFIG = 4 параметр + version</div>
+      <div class="text-[12px] text-gray-300 leading-relaxed">
+        <b>1. confThr:</b> AI итгэлийн threshold (0.05–0.35)<br>
+        <b>2. mfeMulti:</b> TP multiplier (0.5–5.0)<br>
+        <b>3. slMulti:</b> SL multiplier (0.5–5.0)<br>
+        <b>4. version:</b> AI / Momentum / Pattern<br>
+        <b>5. regime:</b> Snapshot үеийн зах зээлийн горим<br>
+        <br>
+        <b>Автомат:</b> Composite score ↑ бол → BEST save → дараагийн trade-д apply
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="customModal" class="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 hidden p-4">
+  <div class="glass rounded-2xl p-5 max-w-sm w-full border border-purple-500/30">
+    <h3 id="modalTitle" class="text-base font-bold text-cyan-300 mb-2"></h3>
+    <p id="modalMsg" class="text-xs text-gray-300 mb-5 leading-relaxed"></p>
+    <div class="flex justify-end gap-2 text-xs">
+      <button id="modalCancelBtn" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition font-semibold">Цуцлах</button>
+      <button id="modalConfirmBtn" class="px-4 py-2 rounded-lg grad font-bold">OK</button>
+    </div>
+  </div>
+</div>
+
+<footer class="mt-4 text-center text-[10px] text-purple-400/50">
+  NEXUS TUSAM v3.0 · Auto-Optimize + Best Config Saver © 2026
+</footer>
+
+<script>
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+const STORAGE_KEY = 'NEXUS_TUSAM_V3_STATE';
+const BINANCE = 'https://fapi.binance.com';
+const TF_MAP = {'1m':'1m','3m':'3m','5m':'5m','15m':'15m','1h':'1h','4h':'4h','1w':'1w'};
+const TV_INT = {'1m':'1','3m':'3','5m':'5','15m':'15','1h':'60','4h':'240'};
+
+const SPEED = {
+  slow:   { ms: 3000, batch: 5,  k5: 60, htf: 50, wk: 60, cache: 120000, univ: 20 },
+  normal: { ms: 1500, batch: 10, k5: 55, htf: 50, wk: 60, cache: 90000,  univ: 30 },
+  fast:   { ms: 800,  batch: 15, k5: 50, htf: 45, wk: 60, cache: 60000,  univ: 40 },
+  turbo:  { ms: 400,  batch: 25, k5: 45, htf: 40, wk: 50, cache: 45000,  univ: 50 }
+};
+
+const CFG = {
+  tf:'5m', htf:'4h', minScore:4, riskPct:0.5, maxPos:2,
+  slBuffer:0.2, feeRate:0.0005, maxDD:20, rangeLook:30,
+  intervalMs:800, batch:15, k5Limit:50, htfLimit:45, wkLimit:60, htfCache:60000,
+  univLimit:40, minVol:5e6, liveMode:false,
+  dltpConfMin: 30, patternScoreMin: 2,
+  useTusam: true,
+  bufferSize: 500, batchSize: 32,
+  uncertaintyThr: 0.18, minAgreement: 0.6, eloK: 24,
+  autoApplyBest: true,
+  evalInterval: 10, minEvalTrades: 20, rollingWindow: 30,
+};
+
+function applySpeed(n){
+  const p=SPEED[n]||SPEED.fast;
+  CFG.intervalMs=p.ms; CFG.batch=p.batch;
+  CFG.k5Limit=p.k5; CFG.htfLimit=p.htf; CFG.wkLimit=p.wk;
+  CFG.htfCache=p.cache; CFG.univLimit=p.univ;
+  if(scanTimer) clearInterval(scanTimer);
+  scanTimer=setInterval(scanBatch,CFG.intervalMs);
+}
+
+// ============== UTILS ==============
+function dec(p){if(!p||p<=0)return 2;if(p>=1000)return 2;if(p>=100)return 3;if(p>=1)return 4;if(p>=0.01)return 5;if(p>=0.001)return 6;return 7;}
+function fP(p){if(!p&&p!==0)return '—';return Number(p).toFixed(dec(p));}
+function fN(n,d=2){if(!isFinite(n))return '0.00';return Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
+function EMA(a,n){if(a.length<n)return null;const k=2/(n+1);const o=[a.slice(0,n).reduce((x,y)=>x+y,0)/n];for(let i=n;i<a.length;i++)o.push(a[i]*k+o[o.length-1]*(1-k));return o;}
+function SMA(a,n){if(a.length<n)return null;const o=[];for(let i=n-1;i<a.length;i++){let s=0;for(let j=i-n+1;j<=i;j++)s+=a[j];o.push(s/n);}return o;}
+function StdDev(a,n){if(a.length<n)return null;const o=[];for(let i=n-1;i<a.length;i++){const mean=a.slice(i-n+1,i+1).reduce((x,y)=>x+y,0)/n;let s=0;for(let j=i-n+1;j<=i;j++)s+=(a[j]-mean)**2;o.push(Math.sqrt(s/n));}return o;}
+function RSI(a,n){if(a.length<n+1)return null;let g=0,l=0;for(let i=1;i<=n;i++){const d=a[i]-a[i-1];if(d>=0)g+=d;else l-=d;}let ag=g/n,al=l/n;const o=[];for(let i=n+1;i<a.length;i++){const d=a[i]-a[i-1];ag=(ag*(n-1)+(d>0?d:0))/n;al=(al*(n-1)+(d<0?-d:0))/n;o.push(al===0?100:100-100/(1+ag/al));}return o;}
+function ATR(k,n){if(k.length<n+1)return 0;let s=0;for(let i=k.length-n;i<k.length;i++){const h=k[i].h,l=k[i].l,pc=k[i-1].c;s+=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));}return s/n;}
+
+// ============== REGIME ==============
+function detectRegime(k5, k4){
+  if(!k5 || k5.length < 30) return 'QUIET';
+  const n = k5.length;
+  const closes = k5.map(k=>k.c);
+  const ema20 = EMA(closes, 20);
+  const ema50 = EMA(closes, 50);
+  if(!ema20 || !ema50) return 'QUIET';
+  const A = ATR(k5, 14);
+  const price = closes[n-1];
+  if(!price || price<=0) return 'QUIET';
+  const atrPct = (A/price)*100;
+  const emaSep = Math.abs(ema20[ema20.length-1] - ema50[ema50.length-1]) / price * 100;
+  const slope20 = (ema20[ema20.length-1] - ema20[Math.max(0,ema20.length-5)]) / ema20[Math.max(0,ema20.length-5)] * 100;
+  if(atrPct > 2.5) return 'VOLATILE';
+  if(atrPct < 0.3) return 'QUIET';
+  if(emaSep > 0.5 && slope20 > 0.3) return 'TREND_UP';
+  if(emaSep > 0.5 && slope20 < -0.3) return 'TREND_DOWN';
+  return 'RANGE';
+}
+function regimeColor(r){
+  const map = {'TREND_UP':'text-emerald-300','TREND_DOWN':'text-rose-400','RANGE':'text-purple-300','VOLATILE':'text-amber-300','QUIET':'text-gray-400'};
+  return map[r]||'text-gray-400';
+}
+
+// ============== TINY MLP ==============
+class TinyMLP {
+  constructor(inDim, hiddenDim, lr=0.02){
+    this.inDim = inDim; this.hidDim = hiddenDim; this.lr = lr;
+    this.W1 = this._init(inDim, hiddenDim);
+    this.b1 = new Array(hiddenDim).fill(0);
+    this.W2 = this._init(hiddenDim, 1);
+    this.b2 = [0];
+    this._lastLoss = null;
+  }
+  _init(rows, cols){
+    const scale = Math.sqrt(2/rows); const m = [];
+    for(let i=0;i<rows;i++){const r=[];for(let j=0;j<cols;j++)r.push((Math.random()*2-1)*scale);m.push(r);}
+    return m;
+  }
+  _sig(x){return 1/(1+Math.exp(-Math.max(-20,Math.min(20,x))));}
+  _tanh(x){return Math.tanh(Math.max(-5,Math.min(5,x)));}
+  predict(x){
+    const h=[];
+    for(let i=0;i<this.hidDim;i++){let sum=this.b1[i];for(let j=0;j<this.inDim;j++)sum+=this.W1[j][i]*x[j];h.push(this._tanh(sum));}
+    let out=this.b2[0];for(let i=0;i<this.hidDim;i++)out+=this.W2[i][0]*h[i];
+    return {p:this._sig(out), h};
+  }
+  train(x, y, weight=1){
+    const {p, h} = this.predict(x);
+    const dOut = (p - y) * weight;
+    this._lastLoss = Math.abs(p - y);
+    const gW2=[];for(let i=0;i<this.hidDim;i++)gW2.push(dOut*h[i]);
+    const dH=[];for(let i=0;i<this.hidDim;i++)dH.push(dOut*this.W2[i][0]*(1-h[i]*h[i]));
+    const gW1=[];for(let j=0;j<this.inDim;j++){const r=[];for(let i=0;i<this.hidDim;i++)r.push(dH[i]*x[j]);gW1.push(r);}
+    for(let i=0;i<this.hidDim;i++)this.W2[i][0]-=this.lr*gW2[i];
+    this.b2[0]-=this.lr*dOut;
+    for(let j=0;j<this.inDim;j++)for(let i=0;i<this.hidDim;i++)this.W1[j][i]-=this.lr*gW1[j][i];
+    for(let j=0;j<this.inDim;j++)for(let i=0;i<this.hidDim;i++)this.W1[j][i]*=0.9995;
+    for(let i=0;i<this.hidDim;i++)this.W2[i][0]*=0.9995;
+  }
+  serialize(){return {W1:this.W1,b1:this.b1,W2:this.W2,b2:this.b2,lr:this.lr,inDim:this.inDim,hidDim:this.hidDim};}
+  loadState(d){if(!d)return;this.W1=d.W1||this.W1;this.b1=d.b1||this.b1;this.W2=d.W2||this.W2;this.b2=d.b2||this.b2;if(d.lr)this.lr=d.lr;}
+}
+
+class EnsembleMLP {
+  constructor(inDim=14, hidDim=8){
+    this.models = [new TinyMLP(inDim,hidDim,0.02), new TinyMLP(inDim,hidDim,0.05), new TinyMLP(inDim,hidDim,0.10)];
+    this.inDim = inDim;
+  }
+  predict(x){
+    const preds = this.models.map(m=>m.predict(x).p);
+    const mean = preds.reduce((a,b)=>a+b,0)/preds.length;
+    const variance = preds.reduce((a,b)=>a+(b-mean)**2,0)/preds.length;
+    const uncertainty = Math.sqrt(variance);
+    const agreement = 1 - Math.min(1, uncertainty*2);
+    return {mean, uncertainty, agreement, preds};
+  }
+  train(x, y, weight=1){
+    const losses = this.models.map(m=>{m.train(x,y,weight);return m._lastLoss||0;});
+    return losses.reduce((a,b)=>a+b,0)/losses.length;
+  }
+  serialize(){return this.models.map(m=>m.serialize());}
+  loadState(d){if(!Array.isArray(d))return;d.forEach((s,i)=>{if(this.models[i])this.models[i].loadState(s);});}
+}
+
+class ReplayBuffer {
+  constructor(cap=500){this.cap=cap;this.buf=[];}
+  add(exp){this.buf.push(exp);if(this.buf.length>this.cap)this.buf.shift();}
+  sample(n){
+    if(this.buf.length<=n)return this.buf.slice();
+    const out=[];const used=new Set();
+    while(out.length<n){const i=Math.floor(Math.random()*this.buf.length);if(!used.has(i)){out.push(this.buf[i]);used.add(i);}}
+    return out;
+  }
+  stats(){
+    if(!this.buf.length)return {n:0,avgReward:0,wr:0};
+    const rewards=this.buf.map(e=>e.reward||0);
+    const wins=this.buf.filter(e=>e.label===1).length;
+    return {n:this.buf.length,avgReward:rewards.reduce((a,b)=>a+b,0)/rewards.length,wr:wins/this.buf.length};
+  }
+  serialize(){return this.buf.slice(-200);}
+  loadState(d){if(Array.isArray(d))this.buf=d.slice();}
+}
+
+class ELORanker {
+  constructor(init=1500){
+    this.elo = {ai:init, momentum:init, pattern:init};
+    this.K = CFG.eloK;
+    this.matches = {ai:0, momentum:0, pattern:0};
+  }
+  update(version, win){
+    const expected = 1/(1+Math.pow(10,(1500-this.elo[version])/400));
+    const actual = win?1:0;
+    this.elo[version] += this.K*(actual-expected);
+    this.elo[version] = Math.max(800,Math.min(2200,this.elo[version]));
+    this.matches[version]++;
+  }
+  best(){return Object.keys(this.elo).sort((a,b)=>this.elo[b]-this.elo[a])[0];}
+  serialize(){return {elo:this.elo,matches:this.matches};}
+  loadState(d){if(d&&d.elo){this.elo=d.elo;this.matches=d.matches||this.matches;}}
+}
+
+// ============== FEATURIZE ==============
+function featurize(sig, k5, regime){
+  const f = new Array(14).fill(0);
+  if(!k5 || k5.length < 30) return f;
+  const closes = k5.map(k=>k.c);
+  const vols = k5.map(k=>k.v || 0);
+  const n = k5.length;
+  const price = closes[n-1];
+  const rsi7 = RSI(closes,7), rsi14 = RSI(closes,14), rsi21 = RSI(closes,21);
+  f[0] = rsi7 && rsi7.length ? (rsi7[rsi7.length-1]-50)/50 : 0;
+  f[1] = rsi14 && rsi14.length ? (rsi14[rsi14.length-1]-50)/50 : 0;
+  f[2] = rsi21 && rsi21.length ? (rsi21[rsi21.length-1]-50)/50 : 0;
+  const ema10 = EMA(closes,10), ema20 = EMA(closes,20);
+  if(ema10){const s10=(ema10[ema10.length-1]-ema10[Math.max(0,ema10.length-4)])/ema10[Math.max(0,ema10.length-4)];f[3]=Math.max(-1,Math.min(1,s10*100));}
+  if(ema20){const s20=(ema20[ema20.length-1]-ema20[Math.max(0,ema20.length-6)])/ema20[Math.max(0,ema20.length-6)];f[4]=Math.max(-1,Math.min(1,s20*50));}
+  const sma20 = SMA(closes,20), std20 = StdDev(closes,20);
+  if(sma20 && std20 && std20.length){
+    const upper = sma20[sma20.length-1]+2*std20[std20.length-1];
+    const lower = sma20[sma20.length-1]-2*std20[std20.length-1];
+    const range = upper-lower||1;
+    f[5] = ((price-lower)/range - 0.5)*2;
+  }
+  const A = ATR(k5,14); const atrPct=price>0?(A/price)*100:0;
+  f[6] = Math.max(-1,Math.min(1,(atrPct-0.8)/2));
+  const avgVol = vols.slice(-20).reduce((a,b)=>a+b,0)/20;
+  const recentVol = vols.slice(-3).reduce((a,b)=>a+b,0)/3;
+  f[7] = avgVol>0 ? Math.max(-1,Math.min(1,(recentVol/avgVol-1))) : 0;
+  if(sig && sig.dir !== 0) f[8] = sig.dir*(sig.score/6);
+  if(typeof marketCtx !== 'undefined' && marketCtx){
+    if(marketCtx.bias==='long') f[9]=1; else if(marketCtx.bias==='short') f[9]=-1; else if(marketCtx.bias==='range') f[9]=0.3;
+  }
+  const last = k5[n-1]; const body = Math.abs(last.c-last.o); const range = (last.h-last.l)||1;
+  const bodyRatio = body/range; const bullish = last.c>last.o;
+  f[10] = bullish ? bodyRatio : -bodyRatio;
+  let consec=0; for(let i=n-1;i>=Math.max(0,n-5);i--){if(k5[i].c>k5[i].o)consec++;else break;}
+  let consecDown=0; for(let i=n-1;i>=Math.max(0,n-5);i--){if(k5[i].c<k5[i].o)consecDown++;else break;}
+  f[11] = (consec-consecDown)/5;
+  if(marketCtx && marketCtx.rangeH && marketCtx.rangeL){
+    const rangeSize = marketCtx.rangeH - marketCtx.rangeL;
+    if(rangeSize>0){const pos=(price-marketCtx.rangeL)/rangeSize;f[12]=(pos-0.5)*2;}
+  }
+  const regimeMap = {'TREND_UP':1,'TREND_DOWN':-1,'RANGE':0,'VOLATILE':-0.5,'QUIET':0.3};
+  f[13] = regimeMap[regime]||0;
+  return f;
+}
+
+// ============================================================
+// BEST CONFIG MANAGER
+// ============================================================
+class BestConfigManager {
+  constructor(){
+    this.best = null;
+    this.history = [];
+    this.lastEvalTrade = 0;
+    this.evalCount = 0;
+    this.improveCount = 0;
+    this.lastScore = null;
+    this.autoApply = CFG.autoApplyBest;
+    this.evalInterval = CFG.evalInterval;
+    this.minTrades = CFG.minEvalTrades;
+  }
+  progress(totalTrades){
+    const sinceLast = totalTrades - this.lastEvalTrade;
+    if(totalTrades < this.minTrades) return {current: totalTrades, target: this.minTrades, phase: 'warmup', pct: Math.min(100, (totalTrades/this.minTrades)*100)};
+    const inCycle = sinceLast % this.evalInterval;
+    return {current: inCycle, target: this.evalInterval, phase: 'ready', pct: (inCycle/this.evalInterval)*100};
+  }
+  shouldEval(totalTrades){
+    if(totalTrades < this.minTrades) return false;
+    return (totalTrades - this.lastEvalTrade) >= this.evalInterval;
+  }
+  evaluate(evo, S, currentRegime){
+    const recent = evo.journal.slice(-CFG.rollingWindow);
+    if(recent.length < this.minTrades) return null;
+    const wins = recent.filter(j=>j.label === 1).length;
+    const wr = wins/recent.length;
+    const avgR = recent.reduce((a,j)=>a+(j.R||0),0)/recent.length;
+    const eq = evo.equity.slice(-(CFG.rollingWindow+1));
+    let sharpe = 0;
+    if(eq.length > 2){
+      const rets = [];
+      for(let i=1;i<eq.length;i++) rets.push((eq[i]-eq[i-1])/eq[i-1]);
+      const mean = rets.reduce((a,b)=>a+b,0)/rets.length;
+      const std = Math.sqrt(rets.reduce((a,b)=>a+(b-mean)**2,0)/rets.length);
+      sharpe = std > 0 ? mean/std : 0;
+    }
+    const score = (wr * 2.0) + (Math.max(0, avgR) * 0.5) + (Math.max(0, sharpe) * 0.3);
+    const snapshot = {
+      confThr: +evo.confThr.toFixed(4),
+      mfeMulti: +evo.mfeMulti.toFixed(3),
+      slMulti: +evo.slMulti.toFixed(3),
+      version: evo.useVersion,
+      regime: currentRegime,
+      score: +score.toFixed(4),
+      wr: +wr.toFixed(4),
+      avgR: +avgR.toFixed(3),
+      sharpe: +sharpe.toFixed(3),
+      capital: +evo.capital.toFixed(2),
+      trades: recent.length,
+      ts: Date.now()
+    };
+    this.lastEvalTrade = S.n;
+    this.evalCount++;
+    this.lastScore = snapshot.score;
+
+    let isNewBest = false;
+    if(!this.best || score > this.best.score){
+      this.best = {...snapshot};
+      this.improveCount++;
+      isNewBest = true;
+    }
+    this.history.push({...snapshot, newBest: isNewBest});
+    if(this.history.length > 200) this.history.shift();
+
+    return {newBest: isNewBest, snapshot};
+  }
+  applyBest(evo){
+    if(!this.best) return false;
+    evo.confThr = this.best.confThr;
+    evo.mfeMulti = this.best.mfeMulti;
+    evo.slMulti = this.best.slMulti;
+    if(this.best.version && evo.elo.elo[this.best.version] !== undefined){
+      evo.elo.elo[this.best.version] = Math.max(evo.elo.elo[this.best.version], 1550);
+    }
+    return true;
+  }
+  serialize(){
+    return {
+      best: this.best,
+      history: this.history.slice(-100),
+      lastEvalTrade: this.lastEvalTrade,
+      evalCount: this.evalCount,
+      improveCount: this.improveCount,
+      lastScore: this.lastScore,
+      autoApply: this.autoApply,
+    };
+  }
+  loadState(d){
+    if(!d) return;
+    this.best = d.best;
+    this.history = d.history || [];
+    this.lastEvalTrade = d.lastEvalTrade || 0;
+    this.evalCount = d.evalCount || 0;
+    this.improveCount = d.improveCount || 0;
+    this.lastScore = d.lastScore || null;
+    if(d.autoApply !== undefined) this.autoApply = d.autoApply;
+  }
+}
+
+// ============================================================
+// TUSAM v3.0
+// ============================================================
+class TUSAMv3 {
+  constructor(initCapital=1000){
+    this.ensemble = new EnsembleMLP(14, 8);
+    this.buffer = new ReplayBuffer(CFG.bufferSize);
+    this.elo = new ELORanker(1500);
+    this.journal = [];
+    this.capital = initCapital;
+    this.equity = [initCapital];
+    this.versions = {
+      ai: {wins:[], trades:0},
+      momentum: {wins:[], trades:0},
+      pattern: {wins:[], trades:0}
+    };
+    this.useVersion = 'ai';
+    this.confThr = 0.12;
+    this.mfeMulti = 1.5;
+    this.slMulti = 1.5;
+    this.open = null;
+    this.totalTrades = 0;
+    this.trainBatches = 0;
+    this.lastLoss = null;
+    this.lastPrediction = null;
+    this.regimeCount = {};
+  }
+  predict(sig, k5, dltp, regime){
+    if(!k5 || k5.length < 30) return null;
+    const feat = featurize(sig, k5, regime);
+    const ens = this.ensemble.predict(feat);
+    this.lastPrediction = {feat, ens, regime};
+    if(ens.uncertainty > CFG.uncertaintyThr) return null;
+    if(ens.agreement < CFG.minAgreement) return null;
+    let sel = this.useVersion, out;
+    if(sel === 'ai'){
+      if(Math.abs(ens.mean - 0.5) < this.confThr) return null;
+      const dir = ens.mean > 0.5 ? 1 : -1;
+      out = {dir, conf: Math.abs(ens.mean - 0.5)*2, feat, regime};
+    } else if(sel === 'momentum'){
+      const ema10 = EMA(k5.map(k=>k.c), 10);
+      if(!ema10) return null;
+      const slope = (ema10[ema10.length-1] - ema10[Math.max(0,ema10.length-4)]) / ema10[Math.max(0,ema10.length-4)];
+      if(regime === 'RANGE' && Math.abs(slope) < 0.004) return null;
+      if(Math.abs(slope) < 0.0015) return null;
+      out = {dir: slope>0?1:-1, conf: Math.min(0.5, Math.abs(slope)*100), feat, regime};
+    } else {
+      if(!sig || sig.dir === 0) return null;
+      const patternBoost = regime === 'RANGE' ? 1.2 : 1.0;
+      out = {dir: sig.dir, conf: Math.min(0.5, (sig.score/10)*patternBoost), feat, regime};
+    }
+    if(!out || !out.dir) return null;
+    let A = ATR(k5, 14);
+    if(!A || A <= 0) A = k5[k5.length-1].c * 0.01;
+    const entry = k5[k5.length-1].c;
+    const sl = out.dir===1 ? entry - A*this.slMulti : entry + A*this.slMulti;
+    const tp1 = out.dir===1 ? entry + A*this.mfeMulti*1.2 : entry - A*this.mfeMulti*1.2;
+    const tp2 = out.dir===1 ? entry + A*this.mfeMulti*2.4 : entry - A*this.mfeMulti*2.4;
+    return {dir: out.dir, score: Math.max(3, Math.round(out.conf*12)), entry, sl, tp1, tp2, version: sel, conf: out.conf, regime, uncertainty: ens.uncertainty, agreement: ens.agreement, feat};
+  }
+  tick(sym, price){
+    const t = this.open;
+    if(!t || t.sym !== sym) return;
+    if(t.dir === 1){t.mfe = Math.max(t.mfe||0, price-t.entry); t.mae = Math.min(t.mae||0, price-t.entry);}
+    else{t.mfe = Math.max(t.mfe||0, t.entry-price); t.mae = Math.min(t.mae||0, t.entry-price);}
+  }
+  onClose(closePrice, posOverride){
+    const t = posOverride || this.open;
+    if(!t) return null;
+    const pnl = (closePrice - t.entry) * (t.dir===1?1:-1);
+    const pnlPct = t.entry > 0 ? (pnl/t.entry*100) : 0;
+    const mfe = t.mfe||0, mae = t.mae||0;
+    const slDist = Math.abs(t.entry - t.sl) || 1;
+    const R = pnl/slDist;
+    const label = pnl > 0 ? 1 : 0;
+    const reward = Math.max(-2, Math.min(3, R)) * 1.5;
+    const feat = t.feat || (t.evoSnapshot ? t.evoSnapshot.feat : new Array(14).fill(0));
+    
+    this.buffer.add({feat, label, reward, R, version:t.version, regime:t.regime, ts:Date.now()});
+    if(this.buffer.buf.length >= CFG.batchSize){
+      const batch = this.buffer.sample(CFG.batchSize);
+      let totalLoss = 0;
+      batch.forEach(exp => {
+        const w = 1 + Math.min(1, Math.abs(exp.reward)/3);
+        totalLoss += this.ensemble.train(exp.feat, exp.label, w);
+      });
+      this.trainBatches++;
+      this.lastLoss = totalLoss/batch.length;
+    } else {
+      this.ensemble.train(feat, label, 1);
+    }
+    const v = this.versions[t.version];
+    if(v){v.wins.push(label); v.trades++; if(v.wins.length>100)v.wins.shift();}
+    if(!this.regimeCount[t.regime]) this.regimeCount[t.regime] = {n:0, w:0};
+    this.regimeCount[t.regime].n++;
+    if(label === 1) this.regimeCount[t.regime].w++;
+    const target1 = Math.abs(t.tp1 - t.entry)||1;
+    const target2 = Math.abs(t.tp2 - t.entry)||1;
+    if(mfe>0 && (mfe/target1)<0.8) this.mfeMulti *= 0.97;
+    else if(mfe>0 && (mfe/target2)>1.3) this.mfeMulti *= 1.03;
+    this.mfeMulti = Math.max(0.5, Math.min(5, this.mfeMulti));
+    if(mae && mae<0 && pnl<0) this.slMulti *= 0.96;
+    else if(pnl>0 && mae > -target1*0.2) this.slMulti *= 1.02;
+    this.slMulti = Math.max(0.5, Math.min(5, this.slMulti));
+    this.elo.update(t.version, label === 1);
+    const oldV = this.useVersion;
+    this.useVersion = this.elo.best();
+    const recentWins = this.journal.slice(-30).map(j=>j.label);
+    const rollingWr = recentWins.length ? recentWins.reduce((a,b)=>a+b,0)/recentWins.length : 0.5;
+    if(rollingWr < 0.4 && recentWins.length >= 20) this.confThr = Math.min(0.35, this.confThr*1.05);
+    else if(rollingWr > 0.65 && recentWins.length >= 20) this.confThr = Math.max(0.05, this.confThr*0.98);
+    this.capital *= (1 + pnlPct/100);
+    this.equity.push(this.capital);
+    if(this.equity.length > 500) this.equity.shift();
+    this.totalTrades++;
+    this.journal.push({sym:t.sym, pnlPct:+pnlPct.toFixed(3), R:+R.toFixed(2), label, version:t.version, regime:t.regime, mfe:+mfe.toFixed(4), mae:+mae.toFixed(4), unc:t.ens?+t.ens.uncertainty.toFixed(3):0, ts:Date.now()});
+    if(this.journal.length > 200) this.journal.shift();
+    this.open = null;
+    return {useVersion:this.useVersion, changed:oldV !== this.useVersion, capital:this.capital, mfeMulti:this.mfeMulti, slMulti:this.slMulti, confThr:this.confThr, elo:this.elo.elo, R};
+  }
+  getStats(){
+    const stat = vv => {
+      const w = this.versions[vv].wins;
+      if(!w.length) return {wr:0,n:0};
+      return {wr:w.reduce((a,b)=>a+b,0)/w.length, n:w.length};
+    };
+    return {
+      ai: stat('ai'), momentum: stat('momentum'), pattern: stat('pattern'),
+      active: this.useVersion, capital: this.capital, trades: this.totalTrades,
+      mfeMulti: this.mfeMulti, slMulti: this.slMulti, confThr: this.confThr,
+      equity: this.equity, journal: this.journal,
+      elo: this.elo.elo, eloMatches: this.elo.matches,
+      buffer: this.buffer.stats(), trainBatches: this.trainBatches, lastLoss: this.lastLoss,
+      lastPrediction: this.lastPrediction, regimeCount: this.regimeCount
+    };
+  }
+  serialize(){
+    return {
+      ensemble: this.ensemble.serialize(), buffer: this.buffer.serialize(), elo: this.elo.serialize(),
+      capital: this.capital, equity: this.equity.slice(-200),
+      versions: {
+        ai:{wins:this.versions.ai.wins.slice(-100), trades:this.versions.ai.trades},
+        momentum:{wins:this.versions.momentum.wins.slice(-100), trades:this.versions.momentum.trades},
+        pattern:{wins:this.versions.pattern.wins.slice(-100), trades:this.versions.pattern.trades},
+      },
+      useVersion: this.useVersion, confThr: this.confThr, mfeMulti: this.mfeMulti, slMulti: this.slMulti,
+      journal: this.journal.slice(-100), totalTrades: this.totalTrades, trainBatches: this.trainBatches,
+      regimeCount: this.regimeCount,
+    };
+  }
+  loadState(d){
+    if(!d) return;
+    try{
+      this.ensemble.loadState(d.ensemble); this.buffer.loadState(d.buffer); this.elo.loadState(d.elo);
+      this.capital = d.capital||1000; this.equity = d.equity||[1000];
+      if(d.versions){
+        this.versions.ai.wins = d.versions.ai?.wins||[];
+        this.versions.momentum.wins = d.versions.momentum?.wins||[];
+        this.versions.pattern.wins = d.versions.pattern?.wins||[];
+        this.versions.ai.trades = d.versions.ai?.trades||0;
+        this.versions.momentum.trades = d.versions.momentum?.trades||0;
+        this.versions.pattern.trades = d.versions.pattern?.trades||0;
+      }
+      this.useVersion = d.useVersion||'ai';
+      this.confThr = d.confThr ?? 0.12;
+      this.mfeMulti = d.mfeMulti ?? 1.5;
+      this.slMulti = d.slMulti ?? 1.5;
+      this.journal = d.journal||[];
+      this.totalTrades = d.totalTrades||0;
+      this.trainBatches = d.trainBatches||0;
+      this.regimeCount = d.regimeCount||{};
+    }catch(e){console.warn('loadState v3 err', e);}
+  }
+}
+
+// ============================================================
+// STATE
+// ============================================================
+const DEF_ST = {bal:1000,startBal:1000,positions:[],hist:[],eqHist:[1000],n:0,w:0,l:0,pnl:0,fees:0,peak:1000,maxDD:0,bot:false,evo:null,bestCfg:null};
+let S = Object.assign({}, DEF_ST);
+try{const r=localStorage.getItem(STORAGE_KEY);if(r)S=Object.assign({},DEF_ST,JSON.parse(r));}catch(e){}
+function saveState(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(S));}catch(e){}}
+let saveT=null;
+function scheduleSave(){if(saveT)return;saveT=setTimeout(()=>{saveState();saveT=null;},500);}
+
+const evo = new TUSAMv3(S.bal || 1000);
+if(S.evo) evo.loadState(S.evo);
+const bestCfg = new BestConfigManager();
+if(S.bestCfg) bestCfg.loadState(S.bestCfg);
+
+// ============================================================
+// RUNTIME
+// ============================================================
+let universe=[],scanQueue=[],scanIdx=0,scanning=false;
+let scanStats={},scanResults=[],totalScan=0,cycles=0;
+let candles=[],htfCandles=[],weeklyCandles=[],ACTIVE=null,price=0;
+let lastAuto=0,lastStart=0,scanTimer=null,botTimer=null;
+let pending=null,useSim=false,tvCount=0,renderSched=false;
+let currentRegime='QUIET';
+const htfCache={},wkCache={};
+const marketCtx={bias:'neutral',rangeH:0,rangeL:0,rangeM:0,zone:'mid',ema50:0};
+
+// ============================================================
+// MARKET CONTEXT
+// ============================================================
+function updateCtx(k4,p){
+  const n=k4.length; if(n<20) return;
+  const closes=k4.map(x=>x.c);
+  const e50=EMA(closes,Math.min(50,Math.floor(closes.length/2)));
+  if(!e50) return;
+  const e50Now=e50[e50.length-1], e50Prev=e50[Math.max(0,e50.length-15)];
+  let bias='neutral';
+  const slope=(e50Now-e50Prev)/e50Prev*100;
+  if(Math.abs(slope)<0.25 && p>e50Now*0.985 && p<e50Now*1.015) bias='range';
+  else if(p>e50Now) bias='long';
+  else if(p<e50Now) bias='short';
+  const lb=k4.slice(-Math.min(CFG.rangeLook,k4.length));
+  const rH=Math.max(...lb.map(x=>x.h));
+  const rL=Math.min(...lb.map(x=>x.l));
+  const rM=(rH+rL)/2;
+  const size=rH-rL;
+  let zone='mid';
+  if(size>0){const pos=(p-rL)/size;if(pos>=0.75)zone='top';else if(pos<=0.25)zone='bottom';}
+  marketCtx.bias=bias;marketCtx.rangeH=rH;marketCtx.rangeL=rL;
+  marketCtx.rangeM=rM;marketCtx.zone=zone;marketCtx.ema50=e50Now;
+  const bc={long:'text-emerald-300',short:'text-rose-400',range:'text-purple-300',neutral:'text-gray-400'};
+  if($('biasVal')){$('biasVal').textContent=bias.toUpperCase();$('biasVal').className=bc[bias]||'text-gray-400';}
+}
+
+// ============================================================
+// HCTP SIGNAL
+// ============================================================
+function dltpTrendPredictor(weeklyK){
+  const n=weeklyK.length; if(n<30) return {trend:'neutral',confidence:0,output:0};
+  const closes=weeklyK.map(k=>k.c);
+  const ema10=EMA(closes,10); if(!ema10) return {trend:'neutral',confidence:0,output:0};
+  const emaSlope=(ema10[ema10.length-1]-ema10[ema10.length-3])/ema10[ema10.length-3]*100;
+  const rsiArr=RSI(closes,14);
+  const rsiVal=rsiArr&&rsiArr.length>0?rsiArr[rsiArr.length-1]:50;
+  const ema20=EMA(closes,20);
+  const pr=closes[closes.length-1];
+  const pricePos=ema20?(pr-ema20[ema20.length-1])/ema20[ema20.length-1]*100:0;
+  const h1=Math.tanh(emaSlope*10), h2=Math.tanh((rsiVal-50)/20), h3=Math.tanh(pricePos/5);
+  const output=0.5*h1+0.3*h2+0.2*h3;
+  let trend='neutral',confidence=0;
+  if(output>0.15){trend='bullish';confidence=Math.min(100,Math.round(Math.abs(output)*200));}
+  else if(output<-0.15){trend='bearish';confidence=Math.min(100,Math.round(Math.abs(output)*200));}
+  return {trend,confidence,output};
+}
+function detectCandlePatterns(k){
+  const n=k.length; if(n<5) return [];
+  const c1=k[n-3],c2=k[n-2],c3=k[n-1];
+  const body=c=>Math.abs(c.c-c.o);
+  const range=c=>(c.h-c.l)||1;
+  const upWick=c=>c.h-Math.max(c.o,c.c);
+  const loWick=c=>Math.min(c.o,c.c)-c.l;
+  const isBull=c=>c.c>c.o;
+  const isBear=c=>c.c<c.o;
+  const patterns=[]; const b3=body(c3),r3=range(c3);
+  if(loWick(c3)>b3*2 && b3/r3<0.4) patterns.push({name:'Hammer',dir:1,score:2});
+  if(isBear(c2) && upWick(c3)>b3*2 && b3/r3<0.35) patterns.push({name:'InvHammer',dir:1,score:2});
+  if(isBull(c2) && upWick(c3)>b3*2 && b3/r3<0.35) patterns.push({name:'ShootingStar',dir:-1,score:2});
+  if(isBear(c2)&&isBull(c3)&&c3.o<c2.c&&c3.c>c2.o&&body(c3)>body(c2)) patterns.push({name:'BullEngulf',dir:1,score:3});
+  if(isBear(c1)&&body(c2)/range(c2)<0.3&&isBull(c3)&&c3.c>(c1.o+c1.c)/2) patterns.push({name:'MorningStar',dir:1,score:3});
+  if(isBear(c2)&&isBull(c3)&&c3.o>c2.c&&c3.c<c2.o&&body(c3)<body(c2)*0.7) patterns.push({name:'BullHarami',dir:1,score:2});
+  if(isBull(c2)&&isBear(c3)&&c3.o>c2.c&&c3.c<c2.o&&body(c3)>body(c2)) patterns.push({name:'BearEngulf',dir:-1,score:3});
+  if(isBull(c1)&&body(c2)/range(c2)<0.3&&isBear(c3)&&c3.c<(c1.o+c1.c)/2) patterns.push({name:'EveningStar',dir:-1,score:3});
+  if(isBull(c2)&&isBear(c3)&&c3.o<c2.c&&c3.c>c2.o&&body(c3)<body(c2)*0.7) patterns.push({name:'BearHarami',dir:-1,score:2});
+  return patterns;
+}
+function hctpSignal(k5, kWeekly, sym){
+  const dltp=dltpTrendPredictor(kWeekly);
+  const patterns=detectCandlePatterns(k5);
+  if(!patterns.length) return {dir:0,score:0,reason:'no pattern',details:null,dltp,sym};
+  patterns.sort((a,b)=>b.score-a.score);
+  const best=patterns[0];
+  const dltpBull=dltp.trend==='bullish';
+  const dltpBear=dltp.trend==='bearish';
+  const patLong=best.dir===1, patShort=best.dir===-1;
+  const alignedLong=patLong&&dltpBull;
+  const alignedShort=patShort&&dltpBear;
+  if(!alignedLong && !alignedShort) return {dir:0,score:0,reason:'HTF conflict',details:null,dltp,pattern:best,sym};
+  if(dltp.confidence < CFG.dltpConfMin) return {dir:0,score:0,reason:'DLTP low',details:null,dltp,pattern:best,sym};
+  if(best.score < CFG.patternScoreMin) return {dir:0,score:0,reason:'pattern weak',details:null,dltp,pattern:best,sym};
+  let A=ATR(k5,14);
+  const entry=k5[k5.length-1].c;
+  if(!A || A<=0) A = entry*0.01;
+  const slDist=A*1.5, tp1Dist=A*1.5, tp2Dist=A*3.0;
+  let sl,tp1,tp2;
+  if(best.dir===1){sl=entry-slDist;tp1=entry+tp1Dist;tp2=entry+tp2Dist;}
+  else{sl=entry+slDist;tp1=entry-tp1Dist;tp2=entry-tp2Dist;}
+  let score=0;
+  score+=Math.min(2,best.score);
+  if(dltp.confidence>=60) score+=2; else if(dltp.confidence>=40) score+=1;
+  if(Math.abs(dltp.output)>0.3) score+=1;
+  if(A>0) score+=1;
+  return {dir:best.dir, score:Math.min(6,score), reason:'HCTP: '+best.name+' + '+dltp.trend, details:{pattern:best.name,patternScore:best.score,dltpTrend:dltp.trend,dltpConf:dltp.confidence,aligned:true,atr:A}, entry,sl,tp1,tp2,dltp,pattern:best,sym};
+}
+
+// ============================================================
+// DATA FETCH
+// ============================================================
+function simK(sym,tf,limit){
+  const out=[];
+  const seed=(sym||'BTC').split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+  let base=100+(seed%500);
+  if(sym.includes('BTC'))base=68000;else if(sym.includes('ETH'))base=3500;else if(sym.includes('SOL'))base=185;else if(sym.includes('BNB'))base=590;
+  let now=Date.now()-limit*5*60*1000;
+  for(let i=0;i<limit;i++){
+    const vol=base*0.004;
+    const ch=(Math.random()-0.49)*vol;
+    const o=base,c=base+ch;
+    const h=Math.max(o,c)+Math.random()*vol*0.6;
+    const l=Math.min(o,c)-Math.random()*vol*0.6;
+    const v=100+Math.random()*500+(Math.random()<0.15?800:0);
+    out.push({t:now+i*5*60*1000,o,h,l,c,v});
+    base=c;
+  }
+  return out;
+}
+async function fetchK(sym,tf,limit){
+  if(useSim) return simK(sym,tf,limit);
+  const iv=TF_MAP[tf]||tf;
+  try{
+    const ctrl=new AbortController();
+    const tid=setTimeout(()=>ctrl.abort(),3500);
+    const url=BINANCE+'/fapi/v1/klines?symbol='+sym+'&interval='+iv+'&limit='+limit;
+    const res=await fetch(url,{signal:ctrl.signal});
+    clearTimeout(tid);
+    if(res.ok){const data=await res.json();if(Array.isArray(data)&&data.length>0)return data.map(r=>({t:+r[0],o:+r[1],h:+r[2],l:+r[3],c:+r[4],v:+r[5]}));}
+  }catch(e){}
+  return simK(sym,tf,limit);
+}
+async function getHTF(sym){const c=htfCache[sym];if(c&&Date.now()-c.ts<CFG.htfCache)return c.data;const data=await fetchK(sym,CFG.htf,CFG.htfLimit);htfCache[sym]={data,ts:Date.now()};return data;}
+async function getWeekly(sym){const c=wkCache[sym];if(c&&Date.now()-c.ts<300000)return c.data;const data=await fetchK(sym,'1w',CFG.wkLimit);wkCache[sym]={data,ts:Date.now()};return data;}
+
+async function fetchUniverse(){
+  try{
+    const ctrl=new AbortController();
+    const tid=setTimeout(()=>ctrl.abort(),4000);
+    const res=await fetch(BINANCE+'/fapi/v1/ticker/24hr',{signal:ctrl.signal});
+    clearTimeout(tid);
+    if(res.ok){const data=await res.json();if(Array.isArray(data)){universe=data.filter(t=>t.symbol.endsWith('USDT')).map(t=>({sym:t.symbol,price:+t.lastPrice,qv:parseFloat(t.quoteVolume||0)})).filter(x=>x.qv>CFG.minVol);log('✅ Binance: '+universe.length+' symbols','text-emerald-300');}}
+  }catch(e){log('⚠️ Binance fallback — Simulated','text-amber-300');useSim=true;}
+  if(!universe.length){
+    useSim=true;
+    universe=[{sym:'BTCUSDT',price:68500,qv:1e9},{sym:'ETHUSDT',price:3500,qv:8e8},{sym:'SOLUSDT',price:185,qv:5e8},{sym:'BNBUSDT',price:590,qv:3e8},{sym:'XRPUSDT',price:0.58,qv:2e8},{sym:'ADAUSDT',price:0.45,qv:1e8},{sym:'AVAXUSDT',price:28,qv:1e8},{sym:'DOGEUSDT',price:0.12,qv:1e8},{sym:'MATICUSDT',price:0.85,qv:8e7},{sym:'LINKUSDT',price:14.5,qv:7e7},{sym:'DOTUSDT',price:6.2,qv:6e7},{sym:'ATOMUSDT',price:8.5,qv:5e7},{sym:'NEARUSDT',price:5.2,qv:5e7},{sym:'APTUSDT',price:9.5,qv:4e7},{sym:'ARBUSDT',price:1.1,qv:4e7},{sym:'OPUSDT',price:2.3,qv:3e7}];
+  }
+  universe.sort((a,b)=>b.qv-a.qv);
+  scanQueue=universe.slice(0,CFG.univLimit);
+  if($('pqSize'))$('pqSize').textContent=universe.length;
+  if($('backendStatus'))$('backendStatus').textContent='Backend: '+(useSim?'simulated':'Binance Live');
+  if($('btSym'))$('btSym').innerHTML=universe.slice(0,40).map(c=>'<option value="'+c.sym+'">'+c.sym+'</option>').join('');
+}
+
+// ============================================================
+// TRADINGVIEW
+// ============================================================
+function loadTV(sym,tf){
+  const c=$('tv_chart_container'); if(!c) return;
+  tvCount++;
+  const id='tv_'+tvCount;
+  c.innerHTML='<div id="'+id+'" style="width:100%;height:100%"></div>';
+  let tvSym=sym;
+  if(sym.endsWith('USDT')&&!sym.includes('.')) tvSym='BINANCE:'+sym+'.P';
+  const int=TV_INT[tf]||'5';
+  if(typeof TradingView==='undefined'||!TradingView.widget){
+    c.innerHTML='<iframe src="https://s.tradingview.com/widgetembed/?symbol='+encodeURIComponent(tvSym)+'&interval='+int+'&theme=dark&style=1&locale=en&hide_side_toolbar=1&allow_symbol_change=0&save_image=0" frameborder="0" allowtransparency="true" scrolling="no"></iframe>';
+    return;
+  }
+  try{
+    new TradingView.widget({
+      container_id:id,autosize:true,symbol:tvSym,interval:int,timezone:'Etc/UTC',theme:'dark',style:'1',locale:'en',
+      toolbar_bg:'#08050f',enable_publishing:false,hide_side_toolbar:true,hide_top_toolbar:false,allow_symbol_change:false,save_image:false,
+      withdateranges:true,studies:['STD;EMA'],
+      overrides:{'paneProperties.background':'#0a0618','paneProperties.backgroundType':'solid','paneProperties.vertGridProperties.color':'rgba(168,85,247,0.08)','paneProperties.horzGridProperties.color':'rgba(168,85,247,0.08)','scalesProperties.textColor':'#a855f7','mainSeriesProperties.candleStyle.upColor':'#0ecb81','mainSeriesProperties.candleStyle.downColor':'#f6465d','mainSeriesProperties.candleStyle.borderUpColor':'#0ecb81','mainSeriesProperties.candleStyle.borderDownColor':'#f6465d','mainSeriesProperties.candleStyle.wickUpColor':'#0ecb81','mainSeriesProperties.candleStyle.wickDownColor':'#f6465d'}
+    });
+  }catch(e){c.innerHTML='<div class="flex items-center justify-center h-full text-rose-400 text-xs">Chart error</div>';}
+}
+
+// ============================================================
+// SCANNER
+// ============================================================
+async function scanOne(coin){
+  if(!coin) return;
+  const st=scanStats[coin.sym]||{};
+  st.status='SCANNING'; scanStats[coin.sym]=st;
+  try{
+    const [k4,k5,kw]=await Promise.all([getHTF(coin.sym),fetchK(coin.sym,CFG.tf,CFG.k5Limit),getWeekly(coin.sym)]);
+    if(!k4?.length||!k5?.length||!kw?.length){st.status='NO DATA';return;}
+    const lastP=k5[k5.length-1].c;
+    updateCtx(k4,lastP);
+    const regime = detectRegime(k5, k4);
+    const sig=hctpSignal(k5,kw,coin.sym);
+    sig.sym=coin.sym;
+    st.bias=marketCtx.bias; st.zone=marketCtx.zone;
+    st.dltp=sig.dltp?sig.dltp.trend:'—';
+    st.pattern=sig.pattern?sig.pattern.name:'—';
+    st.regime = regime;
+    let finalSig = sig;
+    let evoOut = null;
+    if(CFG.useTusam && sig.dir !== 0){
+      evoOut = evo.predict(sig, k5, sig.dltp, regime);
+      if(evoOut){
+        finalSig = {
+          dir:evoOut.dir, score:evoOut.score, reason:'TUSAM['+evoOut.version+'] '+sig.reason, details:sig.details,
+          entry:evoOut.entry, sl:evoOut.sl, tp1:evoOut.tp1, tp2:evoOut.tp2,
+          dltp:sig.dltp, pattern:sig.pattern, evoVersion:evoOut.version, evoConf:evoOut.conf,
+          regime:regime, uncertainty:evoOut.uncertainty, agreement:evoOut.agreement, feat:evoOut.feat, sym:coin.sym
+        };
+      } else {
+        finalSig = {dir:0, score:sig.score, reason:'AI reject', details:sig.details, dltp:sig.dltp, pattern:sig.pattern, sym:coin.sym};
+      }
+    }
+    st.score=finalSig.score; st.dir=finalSig.dir; st.price=lastP; st.sig=finalSig;
+    st.evoV=evoOut?evoOut.version:'—'; st.ts=Date.now();
+    if(finalSig.dir!==0 && finalSig.score>=CFG.minScore){
+      st.status=finalSig.dir>0?'LONG':'SHORT';
+      const i=scanResults.findIndex(r=>r.sym===coin.sym);
+      const e={sym:coin.sym,score:finalSig.score,dir:finalSig.dir,price:lastP,sig:finalSig,candles:k5,regime};
+      if(i>=0) scanResults[i]=e; else scanResults.push(e);
+    } else {
+      st.status=finalSig.reason&&finalSig.reason.indexOf('reject')>=0?'FILTERED':'WAIT';
+      scanResults=scanResults.filter(r=>r.sym!==coin.sym);
+    }
+    totalScan++;
+    if($('totScanned'))$('totScanned').textContent=totalScan;
+    scanResults.sort((a,b)=>b.score-a.score);
+    if($('sigCount'))$('sigCount').textContent=scanResults.length;
+    if(totalScan % 20 === 0){S.evo = evo.serialize(); S.bestCfg = bestCfg.serialize(); scheduleSave();}
+  }catch(e){st.status='ERR';}
+}
+
+async function scanBatch(){
+  if(scanning||!scanQueue.length) return;
+  scanning=true; lastStart=Date.now();
+  if($('scanStatus'))$('scanStatus').textContent='scanning...';
+  const batch=[];
+  for(let i=0;i<CFG.batch;i++){
+    if(scanIdx>=scanQueue.length){scanIdx=0;cycles++;if($('cycleCount'))$('cycleCount').textContent=cycles;}
+    const c=scanQueue[scanIdx++];
+    if(c) batch.push(c);
+  }
+  await Promise.all(batch.map(c=>scanOne(c)));
+  const elapsed=Date.now()-lastStart;
+  if($('cycleTime'))$('cycleTime').textContent=elapsed+'ms';
+  if($('scanStatus'))$('scanStatus').textContent='active';
+  scanning=false;
+  renderScan();
+  autoSwitch();
+  renderEvoStatus();
+  renderBestCfgBar();
+}
+
+function autoSwitch(){
+  if(!scanResults.length) return;
+  const now=Date.now();
+  if(now-lastAuto<20000 && ACTIVE) return;
+  const best=scanResults[0];
+  if(best && best.sym!==ACTIVE){selectSym(best.sym);lastAuto=now;}
+}
+
+async function selectSym(sym){
+  ACTIVE=sym;
+  if($('chartSym'))$('chartSym').textContent=sym;
+  try{
+    const [k4,k5,kw]=await Promise.all([getHTF(sym),fetchK(sym,CFG.tf,100),getWeekly(sym)]);
+    htfCandles=k4; candles=k5; weeklyCandles=kw;
+    if(candles.length){price=candles[candles.length-1].c;if($('chartPrice'))$('chartPrice').textContent=fP(price);}
+    updateCtx(htfCandles,price);
+    currentRegime = detectRegime(candles, htfCandles);
+    loadTV(sym,CFG.tf);
+    updateSignal();
+    renderScan();
+  }catch(e){}
+}
+
+function updateSignal(){
+  if(candles.length<30||!weeklyCandles.length) return;
+  const regime = detectRegime(candles, htfCandles);
+  currentRegime = regime;
+  let sig=hctpSignal(candles,weeklyCandles,ACTIVE);
+  sig.sym=ACTIVE;
+  let displaySig = sig;
+  if(CFG.useTusam && sig.dir !== 0){
+    const evoOut = evo.predict(sig, candles, sig.dltp, regime);
+    if(evoOut){
+      displaySig = {
+        dir:evoOut.dir, score:evoOut.score, reason:'TUSAM['+evoOut.version+'] '+sig.reason, details:sig.details,
+        entry:evoOut.entry, sl:evoOut.sl, tp1:evoOut.tp1, tp2:evoOut.tp2, dltp:sig.dltp, pattern:sig.pattern,
+        evoVersion:evoOut.version, evoConf:evoOut.conf, regime, uncertainty:evoOut.uncertainty, agreement:evoOut.agreement, feat:evoOut.feat
+      };
+    } else {
+      displaySig = {dir:0, score:sig.score, reason:'AI reject', details:sig.details, dltp:sig.dltp, pattern:sig.pattern};
+    }
+  }
+  renderDetail(displaySig);
+  if($('compScore'))$('compScore').textContent=displaySig.reason||'Scanning';
+  if($('compBar'))$('compBar').style.width=Math.min(100,(displaySig.score/6)*100)+'%';
+  const dt=displaySig.dir>0?'LONG':displaySig.dir<0?'SHORT':'NEUTRAL';
+  const dcl=displaySig.dir>0?'val-pos':displaySig.dir<0?'val-neg':'text-gray-400';
+  if($('compSignal'))$('compSignal').innerHTML='<span class="'+dcl+'">'+dt+'</span> <span class="text-gray-500">· '+displaySig.score+'/6</span>';
+  if($('scoreVal'))$('scoreVal').textContent=displaySig.score+'/6';
+  if($('regimeVal')){$('regimeVal').textContent=regime;$('regimeVal').className=regimeColor(regime);}
+  if($('eloVal')){const elo=evo.elo.elo[evo.useVersion];$('eloVal').textContent=Math.round(elo);$('eloVal').className=elo>1550?'text-emerald-300':elo<1450?'text-rose-400':'text-amber-300';}
+  if($('filterInfo')){if(displaySig.dir!==0){$('filterInfo').textContent='✅ AI+DLTP+CPRS';$('filterInfo').className='text-[9px] mt-1.5 text-center text-emerald-400 font-mono';}else{$('filterInfo').textContent=displaySig.reason||'—';$('filterInfo').className='text-[9px] mt-1.5 text-center text-gray-500 font-mono';}}
+  if($('hctpOverlay')){
+    const lines=[];
+    lines.push('Regime: '+regime);
+    if(sig.dltp) lines.push('DLTP: '+sig.dltp.trend+' ('+sig.dltp.confidence+'%)');
+    if(sig.pattern) lines.push('CPRS: '+sig.pattern.name);
+    lines.push('V: '+evo.useVersion.toUpperCase()+' | ELO: '+Math.round(evo.elo.elo[evo.useVersion]));
+    if(bestCfg.best) lines.push('🏆 BEST: '+bestCfg.best.score.toFixed(2));
+    lines.push(displaySig.dir!==0?('✅ '+(displaySig.dir>0?'LONG':'SHORT')+' '+displaySig.score+'/6'):'⏳ '+(displaySig.reason||''));
+    $('hctpOverlay').innerHTML=lines.join('<br>');
+    $('hctpOverlay').className='absolute top-1 left-1 text-[9px] bg-black/70 rounded px-2 py-1 font-mono pointer-events-none '+(displaySig.dir>0?'text-emerald-300':displaySig.dir<0?'text-rose-400':'text-gray-300');
+  }
+}
+
+function curDD(){return S.peak>0?((S.peak-S.bal)/S.peak)*100:0;}
+
+// ============================================================
+// TRADING
+// ============================================================
+function openPos(sym,sig){
+  if(!sig||S.positions.find(p=>p.sym===sym)) return;
+  if(S.positions.length>=CFG.maxPos) return;
+  if(S.bal<20||curDD()>=CFG.maxDD) return;
+  if(!sig.entry||!sig.sl||!sig.tp1) return;
+
+  if(CFG.autoApplyBest && bestCfg.best && bestCfg.autoApply){
+    const applied = bestCfg.applyBest(evo);
+    if(applied){
+      log('🏆 Best config applied → confThr:'+evo.confThr.toFixed(3)+
+          ' MFE×:'+evo.mfeMulti.toFixed(2)+' SL×:'+evo.slMulti.toFixed(2),
+          'text-yellow-300');
+    }
+  }
+
+  const entry=sig.entry, sl=sig.sl, tp1=sig.tp1;
+  const tp2=sig.tp2||(sig.dir>0?entry+(tp1-entry)*2:entry-(entry-tp1)*2);
+  const slD=Math.abs(entry-sl); if(slD<=0) return;
+  const side=sig.dir>0?'LONG':'SHORT';
+  const riskUsd=S.bal*(CFG.riskPct/100);
+  const size=riskUsd/slD;
+  const fee=size*entry*CFG.feeRate;
+  S.bal-=fee; S.fees+=fee;
+  const evoV = sig.evoVersion || evo.useVersion;
+
+  const posEvoSnapshot = {
+    sym,
+    dir: sig.dir,
+    entry,
+    feat: sig.feat || (evo.lastPrediction ? evo.lastPrediction.feat : new Array(14).fill(0)),
+    conf: sig.evoConf || 0.5,
+    version: evoV,
+    regime: sig.regime || currentRegime,
+    tp1, tp2, sl
+  };
+
+  S.positions.push({
+    sym, side, entry, size, sl, tp1, tp2, slD, fee, t:Date.now(),
+    partial:false, be:false, name:sig.reason, score:sig.score,
+    version: evoV, regime: sig.regime || currentRegime,
+    mfe:0, mae:0,
+    evoSnapshot: posEvoSnapshot
+  });
+  log('🎯 '+side+' '+sym+' @ '+fP(entry)+' ['+sig.reason+']','text-emerald-300');
+  scheduleSave(); renderPos(); renderAnalytics();
+}
+
+function closePos(pos,exitPx,reason,partQty){
+  const qty=partQty||pos.size;
+  const pnlPU=pos.side==='LONG'?(exitPx-pos.entry):(pos.entry-exitPx);
+  const gross=pnlPU*qty;
+  const fee=qty*exitPx*CFG.feeRate;
+  const net=gross-fee;
+  const R=pnlPU/pos.slD;
+  S.bal+=gross-fee; S.fees+=fee; S.pnl+=net;
+  S.peak=Math.max(S.peak,S.bal); S.maxDD=Math.max(S.maxDD,curDD());
+  S.n++;
+  if(net>=0){S.w++;}else{S.l++;}
+  S.hist.unshift({
+    t:new Date().toLocaleTimeString().slice(0,8), sym:pos.sym, side:pos.side,
+    e:pos.entry, c:exitPx, r:R, net, reason:partQty?'TP1':reason,
+    v:pos.version||'—', regime:pos.regime||'—'
+  });
+  S.eqHist.push(S.bal);
+  if(S.eqHist.length>500)S.eqHist.shift();
+
+  if(!partQty){
+    const evoTradeCtx = Object.assign({}, pos.evoSnapshot, {
+      mfe: pos.mfe || 0,
+      mae: pos.mae || 0
+    });
+    const res = evo.onClose(exitPx, evoTradeCtx);
+    if(res && res.changed){
+      log('🧬 ELO shift → '+res.useVersion.toUpperCase()+' (ELO '+Math.round(res.elo[res.useVersion])+')','text-fuchsia-300');
+    }
+
+    if(bestCfg.shouldEval(S.n)){
+      const evalRes = bestCfg.evaluate(evo, S, currentRegime);
+      if(evalRes){
+        const sn = evalRes.snapshot;
+        if(evalRes.newBest){
+          log('🏆 NEW BEST! Score:'+sn.score.toFixed(3)+
+              ' WR:'+(sn.wr*100).toFixed(1)+'%'+
+              ' AvgR:'+sn.avgR.toFixed(2)+
+              ' Sharpe:'+sn.sharpe.toFixed(2),
+              'text-yellow-300');
+          log('🏆 Saved → v:'+sn.version.toUpperCase()+
+              ' conf:'+sn.confThr.toFixed(3)+
+              ' MFE×:'+sn.mfeMulti.toFixed(2)+
+              ' SL×:'+sn.slMulti.toFixed(2),
+              'text-yellow-300');
+          if(CFG.autoApplyBest && bestCfg.autoApply){
+            bestCfg.applyBest(evo);
+            log('✅ Best auto-applied to evo','text-emerald-300');
+          }
+        } else {
+          log('📊 Eval #'+bestCfg.evalCount+' → Score:'+sn.score.toFixed(3)+
+              ' (best:'+bestCfg.best.score.toFixed(3)+')',
+              'text-cyan-300');
+        }
+      }
+    }
+    S.evo = evo.serialize();
+    S.bestCfg = bestCfg.serialize();
+  }
+
+  if(partQty){pos.size-=qty;log('💰 '+pos.sym+' TP1 +$'+fN(net),'text-emerald-300');}
+  else{
+    S.positions=S.positions.filter(p=>p!==pos);
+    log((net>=0?'✅':'❌')+' '+pos.sym+' '+reason+' '+(net>=0?'+':'-')+'$'+fN(Math.abs(net))+' R:'+R.toFixed(2),net>=0?'text-emerald-300':'text-rose-400');
+  }
+  scheduleSave(); renderPos(); renderHist(); renderAnalytics(); renderEvoStatus(); renderBrain(); renderBestCfgBar(); renderBestCfgTab();
+}
+
+function managePos(){
+  if(!S.positions.length) return;
+  S.positions.slice().forEach(pos=>{
+    const px=(pos.sym===ACTIVE&&price>0)?price:pos.entry;
+    if(pos.sym===ACTIVE && price>0){
+      if(pos.side==='LONG'){pos.mfe=Math.max(pos.mfe||0,price-pos.entry);pos.mae=Math.min(pos.mae||0,price-pos.entry);}
+      else{pos.mfe=Math.max(pos.mfe||0,pos.entry-price);pos.mae=Math.min(pos.mae||0,pos.entry-price);}
+      evo.tick(pos.sym, price);
+    }
+    if(!pos.partial&&((pos.side==='LONG'&&px>=pos.tp1)||(pos.side==='SHORT'&&px<=pos.tp1))){
+      closePos(pos,pos.tp1,'TP1',pos.size/2);
+      if(S.positions.includes(pos)){pos.partial=true;pos.be=true;pos.sl=pos.entry;}
+      return;
+    }
+    if(pos.side==='LONG'){
+      if(px<=pos.sl) closePos(pos,pos.sl,pos.be?'BE':'SL');
+      else if(px>=pos.tp2) closePos(pos,pos.tp2,'TP2');
+    } else {
+      if(px>=pos.sl) closePos(pos,pos.sl,pos.be?'BE':'SL');
+      else if(px<=pos.tp2) closePos(pos,pos.tp2,'TP2');
+    }
+  });
+}
+
+// ============================================================
+// BOT
+// ============================================================
+function toggleBot(){
+  S.bot=!S.bot;
+  const b=$('botBtn');
+  if(S.bot){
+    b.className='grad px-6 py-3 rounded-xl text-base font-bold bot-active flex items-center gap-2';
+    if($('botBtnTxt'))$('botBtnTxt').textContent='AI БОТ ЗОГСООХ';
+    if($('feedStatus'))$('feedStatus').textContent='AUTO TRADING';
+    log('🧠 TUSAM v3 AUTO TRADER ЭХЭЛЛЭЭ','text-emerald-300');
+    scanBatch();
+    if(botTimer) clearInterval(botTimer);
+    botTimer=setInterval(botTick,3000);
+  } else {
+    b.className='grad px-6 py-3 rounded-xl text-base font-bold flex items-center gap-2';
+    if($('botBtnTxt'))$('botBtnTxt').textContent='AI БОТ ЭХЛҮҮЛЭХ';
+    if($('feedStatus'))$('feedStatus').textContent='READY';
+    log('⏹ AI БОТ ЗОГСЛОО','text-amber-300');
+    if(botTimer){clearInterval(botTimer);botTimer=null;}
+  }
+  scheduleSave();
+}
+function botTick(){
+  if(!S.bot||S.positions.length>=CFG.maxPos) return;
+  const c=scanResults.filter(r=>r.score>=CFG.minScore&&!S.positions.find(p=>p.sym===r.sym));
+  if(c.length>0) openPos(c[0].sym,c[0].sig);
+}
+
+// ============================================================
+// MODAL
+// ============================================================
+function promptConfirm(title,msg,btn,cb){
+  if($('modalTitle'))$('modalTitle').innerHTML=title;
+  if($('modalMsg'))$('modalMsg').textContent=msg;
+  if($('modalConfirmBtn'))$('modalConfirmBtn').textContent=btn;
+  if($('customModal'))$('customModal').classList.remove('hidden');
+  pending=cb;
+}
+function closeModal(ok){
+  if($('customModal'))$('customModal').classList.add('hidden');
+  if(ok&&typeof pending==='function') pending();
+  pending=null;
+}
+function forceReset(){
+  S.positions=[];S.bal=1000;S.peak=1000;S.pnl=0;S.fees=0;S.n=0;S.w=0;S.l=0;
+  S.hist=[];S.maxDD=0;S.eqHist=[1000];
+  evo.capital=1000;evo.equity=[1000];evo.journal=[];evo.totalTrades=0;
+  evo.versions={ai:{wins:[],trades:0},momentum:{wins:[],trades:0},pattern:{wins:[],trades:0}};
+  evo.useVersion='ai';evo.confThr=0.12;evo.mfeMulti=1.5;evo.slMulti=1.5;
+  evo.ensemble=new EnsembleMLP(14,8);evo.buffer=new ReplayBuffer(CFG.bufferSize);evo.elo=new ELORanker(1500);
+  evo.trainBatches=0;evo.lastLoss=null;evo.regimeCount={};
+  bestCfg.best=null;bestCfg.history=[];bestCfg.lastEvalTrade=0;bestCfg.evalCount=0;bestCfg.improveCount=0;bestCfg.lastScore=null;
+  S.evo=evo.serialize();S.bestCfg=bestCfg.serialize();
+  saveState();renderUI();renderEvoStatus();renderBrain();renderBestCfgBar();renderBestCfgTab();
+  log('💵 Reset $1,000 + TUSAM v3 + Best Config reset','text-emerald-300');
+}
+
+// ============================================================
+// BACKTEST
+// ============================================================
+async function runBT(){
+  const sym=$('btSym').value||'BTCUSDT';
+  const tf=$('btTf').value||'5m';
+  const bars=parseInt($('btBars').value)||1000;
+  const startBal=parseFloat($('btBal').value)||1000;
+  const minScore=parseInt($('btMinScore').value)||4;
+  const riskPct=parseFloat($('btRisk').value)||0.5;
+  const useEvo = $('btEvo')?$('btEvo').checked:true;
+  if($('btStatus'))$('btStatus').textContent='⏳ Уншиж байна...';
+  if($('btBestLbl'))$('btBestLbl').textContent='';
+  try{
+    const k5=await fetchK(sym,tf,bars);
+    const k4=await fetchK(sym,CFG.htf,200);
+    const kw=await fetchK(sym,'1w',60);
+    if(!k5.length){if($('btStatus'))$('btStatus').textContent='❌ Data хоосон';return;}
+    const btEvo = useEvo ? new TUSAMv3(startBal) : null;
+    const btBest = useEvo ? new BestConfigManager() : null;
+    let bal=startBal, peak=startBal, maxDD=0;
+    const trades=[],eqC=[startBal];
+    let pos=null;
+    for(let i=50;i<k5.length-1;i++){
+      const slice=k5.slice(0,i+1);
+      updateCtx(k4,k5[i].c);
+      const regime = detectRegime(slice,k4);
+      const candle=k5[i];
+      if(pos && btEvo && btEvo.open) btEvo.tick(sym, candle.c);
+      if(pos){
+        let closed=false, exitPx=candle.c, reason='';
+        if(pos.side==='LONG'){
+          if(candle.l<=pos.sl){closed=true;exitPx=pos.sl;reason='SL';}
+          else if(candle.h>=pos.tp2){closed=true;exitPx=pos.tp2;reason='TP2';}
+        } else {
+          if(candle.h>=pos.sl){closed=true;exitPx=pos.sl;reason='SL';}
+          else if(candle.l<=pos.tp2){closed=true;exitPx=pos.tp2;reason='TP2';}
+        }
+        if(closed){
+          const pnlPU=pos.side==='LONG'?(exitPx-pos.entry):(pos.entry-exitPx);
+          const net=(pnlPU*pos.size)-(pos.size*exitPx*CFG.feeRate);
+          bal+=net; peak=Math.max(peak,bal);
+          maxDD=Math.max(maxDD,((peak-bal)/peak)*100);
+          trades.push({side:pos.side,entry:pos.entry,exit:exitPx,R:pnlPU/pos.slD,net,reason,v:pos.v||'—',regime:pos.regime||'—'});
+          eqC.push(bal);
+          if(btEvo){
+            const evoCtx = {sym, dir:pos.side==='LONG'?1:-1, entry:pos.entry, conf:0.5, version:pos.v, regime:pos.regime, feat:new Array(14).fill(0), mfe:0, mae:0, tp1:pos.tp1, tp2:pos.tp2, sl:pos.sl};
+            btEvo.onClose(exitPx, evoCtx);
+          }
+          if(btBest && btBest.shouldEval(trades.length)){
+            const r = btBest.evaluate(btEvo, {n:trades.length}, regime);
+            if(r && r.newBest && CFG.autoApplyBest) btBest.applyBest(btEvo);
+          }
+          pos=null;
+        }
+      }
+      if(!pos&&bal>50){
+        const sig=hctpSignal(slice,kw,sym);
+        sig.sym=sym;
+        if(sig.dir!==0 && sig.score>=minScore){
+          let finalSig = sig;
+          if(btEvo){
+            const evoOut = btEvo.predict(sig, slice, sig.dltp, regime);
+            if(evoOut) finalSig={dir:evoOut.dir,score:evoOut.score,entry:evoOut.entry,sl:evoOut.sl,tp1:evoOut.tp1,tp2:evoOut.tp2,version:evoOut.version,regime};
+            else finalSig=null;
+          }
+          if(finalSig){
+            const slD=Math.abs(finalSig.entry-finalSig.sl);
+            if(slD>0) pos={side:finalSig.dir>0?'LONG':'SHORT',entry:finalSig.entry,size:(bal*(riskPct/100))/slD,sl:finalSig.sl,tp1:finalSig.tp1,tp2:finalSig.tp2,slD,v:finalSig.version||'—',regime:finalSig.regime||'—'};
+          }
+        }
+      }
+    }
+    const total=trades.length;
+    const wr=total>0?(trades.filter(t=>t.net>0).length/total)*100:0;
+    const netPnl=bal-startBal;
+    const avgR=total>0?trades.reduce((a,t)=>a+t.R,0)/total:0;
+    const profitFactor=(()=>{const w=trades.filter(t=>t.net>0).reduce((a,t)=>a+t.net,0);const l=Math.abs(trades.filter(t=>t.net<0).reduce((a,t)=>a+t.net,0));return l>0?w/l:(w>0?999:0);})();
+    const sharpe=(()=>{if(!eqC.length||eqC.length<3)return 0;const rets=[];for(let i=1;i<eqC.length;i++)rets.push((eqC[i]-eqC[i-1])/eqC[i-1]);const mean=rets.reduce((a,b)=>a+b,0)/rets.length;const std=Math.sqrt(rets.reduce((a,b)=>a+(b-mean)**2,0)/rets.length);return std>0?(mean/std)*Math.sqrt(252):0;})();
+    if($('btMetrics'))$('btMetrics').innerHTML=
+      '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">Net PnL</span><b class="'+(netPnl>=0?'val-pos':'val-neg')+'">'+(netPnl>=0?'+':'')+'$'+fN(netPnl)+'</b></div>'+
+      '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">Trades</span><b>'+total+'</b></div>'+
+      '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">Win Rate</span><b class="'+(wr>=50?'val-pos':'val-neg')+'">'+wr.toFixed(1)+'%</b></div>'+
+      '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">Avg R</span><b class="'+(avgR>=0?'val-pos':'val-neg')+'">'+(avgR>=0?'+':'')+avgR.toFixed(2)+'</b></div>'+
+      '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">Profit Factor</span><b class="text-cyan-300">'+profitFactor.toFixed(2)+'</b></div>'+
+      '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">Sharpe (ann.)</span><b class="text-fuchsia-300">'+sharpe.toFixed(2)+'</b></div>'+
+      '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">Max DD</span><b class="text-amber-300">'+maxDD.toFixed(1)+'%</b></div>'+
+      (btBest&&btBest.best?'<div class="flex justify-between border-b border-yellow-500/20 py-1 bg-yellow-500/5"><span class="text-yellow-300">🏆 Best Score</span><b class="text-yellow-300">'+btBest.best.score.toFixed(3)+'</b></div>':'');
+    drawChart('btEqCanvas',eqC,netPnl>=0);
+    if($('btStatus'))$('btStatus').textContent='✅ '+total+' trades | $'+fN(netPnl)+' | WR '+wr.toFixed(0)+'%';
+    if($('btBestLbl') && btBest && btBest.best){
+      $('btBestLbl').textContent='🏆 Best: '+btBest.best.version.toUpperCase()+' | Score '+btBest.best.score.toFixed(3)+
+        ' | WR '+(btBest.best.wr*100).toFixed(0)+'% | Improvements '+btBest.improveCount;
+    }
+    log('📊 BT '+sym+' — '+total+' trades WR '+wr.toFixed(0)+'% PF '+profitFactor.toFixed(2),netPnl>=0?'text-emerald-300':'text-rose-400');
+  }catch(e){console.warn('bt',e);if($('btStatus'))$('btStatus').textContent='❌ Error';}
+}
+
+function drawChart(id,data,isPos){
+  const c=$(id); if(!c||!data||data.length<2) return;
+  const dpr=window.devicePixelRatio||1;
+  const W=c.parentElement.clientWidth||600,H=c.parentElement.clientHeight||220;
+  if(W<=0 || H<=0) return;
+  c.width=W*dpr;c.height=H*dpr;c.style.width=W+'px';c.style.height=H+'px';
+  const x=c.getContext('2d');
+  x.setTransform(1,0,0,1,0,0);x.scale(dpr,dpr);x.clearRect(0,0,W,H);
+  const min=Math.min(...data),max=Math.max(...data);
+  const pad=(max-min)*0.1||10;
+  const mn=min-pad,mx=max+pad;
+  x.strokeStyle=isPos?'#0ecb81':'#f6465d';x.lineWidth=2;
+  x.beginPath();
+  for(let i=0;i<data.length;i++){
+    const px=(W/(data.length-1))*i;
+    const py=H-((data[i]-mn)/(mx-mn))*H;
+    if(i===0)x.moveTo(px,py);else x.lineTo(px,py);
+  }
+  x.stroke();
+  x.lineTo(W,H);x.lineTo(0,H);x.closePath();
+  x.fillStyle=isPos?'rgba(14,203,129,0.1)':'rgba(246,70,93,0.1)';x.fill();
+}
+
+// ============================================================
+// UI
+// ============================================================
+function log(msg,cls){
+  cls=cls||'text-slate-300';
+  const el=$('log'); if(!el) return;
+  const d=document.createElement('div');
+  d.className=cls+' border-b border-purple-500/10 pb-0.5';
+  d.innerHTML='<span class="text-gray-500">['+new Date().toLocaleTimeString().slice(0,8)+']</span> '+msg;
+  el.prepend(d);
+  while(el.children.length>100)el.lastChild.remove();
+}
+
+function renderScan(){
+  if(renderSched) return;renderSched=true;
+  requestAnimationFrame(()=>{
+    renderSched=false;
+    const tb=$('scanBody'); if(!tb) return;
+    const rows=[]; const seen=new Set();
+    scanResults.slice(0,10).forEach(r=>{const st=scanStats[r.sym];if(st){rows.push({sym:r.sym,...st});seen.add(r.sym);}});
+    Object.keys(scanStats).forEach(sym=>{if(seen.has(sym))return;rows.push({sym,...scanStats[sym]});seen.add(sym);});
+    scanQueue.forEach(c=>{if(seen.has(c.sym))return;rows.push({sym:c.sym,status:'IDLE'});});
+    if(!rows.length){tb.innerHTML='<tr><td colspan="5" class="text-center py-6 text-gray-500">Эхэлж байна...</td></tr>';return;}
+    const stCls=s=>{if(s==='LONG'||s==='SHORT')return 'status-signal';if(s==='SCANNING')return 'status-scanning';if(s==='FILTERED')return 'status-filtered';return 'status-wait';};
+    const regCls=r=>{if(r==='TREND_UP')return 'reg-trend-up';if(r==='TREND_DOWN')return 'reg-trend-down';if(r==='RANGE')return 'reg-range';if(r==='VOLATILE')return 'reg-volatile';return 'reg-quiet';};
+    tb.innerHTML=rows.map(r=>{
+      const st=r.status||'IDLE';
+      const arrow=r.dir>0?'▲':r.dir<0?'▼':'—';
+      const vTxt=r.evoV?r.evoV.slice(0,3).toUpperCase():'—';
+      const regShort=(r.regime||'').replace('TREND_','T-').slice(0,4)||'—';
+      return '<tr data-sym="'+r.sym+'" class="scan-row border-b border-purple-500/5 '+(r.sym===ACTIVE?'active':'')+'">'+
+        '<td class="pl-1 font-semibold text-purple-200 text-[10px]">'+r.sym.replace('USDT','')+'</td>'+
+        '<td><span class="regime-tag '+regCls(r.regime)+'">'+regShort+'</span></td>'+
+        '<td class="text-[9px] text-fuchsia-300">'+vTxt+'</td>'+
+        '<td class="text-right pr-1 font-bold text-[10px] text-amber-300">'+(r.score?r.score+'/6':'—')+'</td>'+
+        '<td class="text-right pr-1 '+stCls(st)+' text-[9px]">'+st+' '+arrow+'</td></tr>';
+    }).join('');
+    tb.querySelectorAll('tr[data-sym]').forEach(tr=>{tr.addEventListener('click',()=>selectSym(tr.getAttribute('data-sym')));});
+  });
+}
+
+function renderDetail(sig){
+  const sd=$('signalDetail'); if(!sd) return;
+  if(!sig){sd.innerHTML='<div class="text-gray-500 text-center py-4">Шинжилж байна...</div>';return;}
+  const d=sig.details;
+  const items=[
+    ['DLTP Trend',d?d.dltpTrend||'—':(sig.dltp?sig.dltp.trend:'—')],
+    ['DLTP Conf',sig.dltp?sig.dltp.confidence+'%':'—'],
+    ['CPRS Pattern',sig.pattern?sig.pattern.name:'—'],
+    ['Regime',sig.regime||currentRegime],
+    ['AI Version',sig.evoVersion||evo.useVersion],
+    ['Best Applied',bestCfg.best?('Score '+bestCfg.best.score.toFixed(2)):'—']
+  ];
+  sd.innerHTML=items.map(it=>{
+    const val=typeof it[1]==='boolean'?'<span class="score-badge '+(it[1]?'score-full':'score-miss')+'">'+(it[1]?'✓':'✗')+'</span>':'<b class="text-[10px] text-cyan-300">'+it[1]+'</b>';
+    return '<div class="flex justify-between items-center inner rounded p-1.5">'+
+      '<span class="text-[10px] text-gray-300">'+it[0]+'</span>'+val+'</div>';
+  }).join('');
+}
+
+function renderPos(){
+  const el=$('posList'); if(!el) return;
+  if($('posCount'))$('posCount').textContent=S.positions.length;
+  if(!S.positions.length){el.innerHTML='<div class="text-gray-500 text-center py-4">Байрлалгүй</div>';return;}
+  el.innerHTML=S.positions.map(p=>{
+    const px=(p.sym===ACTIVE&&price>0)?price:p.entry;
+    const pnl=p.side==='LONG'?(px-p.entry)*p.size:(p.entry-px)*p.size;
+    const vCls='v-'+(p.version||'ai');
+    const regCls=p.regime==='TREND_UP'?'reg-trend-up':p.regime==='TREND_DOWN'?'reg-trend-down':p.regime==='RANGE'?'reg-range':p.regime==='VOLATILE'?'reg-volatile':'reg-quiet';
+    return '<div class="inner rounded-lg p-2">'+
+      '<div class="flex justify-between items-center mb-1">'+
+      '<div class="flex items-center gap-1.5"><b class="text-purple-200">'+p.sym.replace('USDT','')+'</b>'+
+      '<span class="badge '+(p.side==='LONG'?'bg-emerald-500/15 val-pos':'bg-rose-500/15 val-neg')+'">'+p.side+'</span>'+
+      '<span class="version-tag '+vCls+'">'+(p.version||'—').slice(0,3).toUpperCase()+'</span>'+
+      '<span class="regime-tag '+regCls+'">'+(p.regime||'').replace('TREND_','T-').slice(0,4)+'</span></div>'+
+      '<span class="'+(pnl>=0?'val-pos':'val-neg')+' font-bold">'+(pnl>=0?'+':'')+'$'+fN(pnl)+'</span></div>'+
+      '<div class="grid grid-cols-3 gap-1 text-[9px] text-gray-400 font-mono mb-1">'+
+      '<span>E:'+fP(p.entry)+'</span><span>SL:'+fP(p.sl)+'</span><span>TP:'+fP(p.tp1)+'</span></div>'+
+      '<div class="grid grid-cols-2 gap-1 text-[9px] font-mono">'+
+      '<span class="text-emerald-300">MFE:'+fP(p.mfe||0)+'</span>'+
+      '<span class="text-rose-400">MAE:'+fP(p.mae||0)+'</span></div></div>';
+  }).join('');
+}
+
+function renderHist(){
+  const tb=$('histBody'); if(!tb) return;
+  if($('histCount'))$('histCount').textContent=S.n;
+  if(!S.hist.length){tb.innerHTML='<tr><td colspan="5" class="text-center py-3 text-gray-500">—</td></tr>';return;}
+  tb.innerHTML=S.hist.slice(0,20).map(h=>{
+    const vCls='v-'+(h.v||'ai');
+    return '<tr class="border-b border-purple-500/10 font-mono">'+
+      '<td class="text-gray-500 text-left pl-1">'+h.t+'</td>'+
+      '<td class="text-left font-semibold text-purple-200">'+h.sym.replace('USDT','')+'</td>'+
+      '<td><span class="version-tag '+vCls+'">'+(h.v||'—').slice(0,3).toUpperCase()+'</span></td>'+
+      '<td class="'+(h.r>=0?'val-pos':'val-neg')+'">'+(h.r>=0?'+':'')+h.r.toFixed(2)+'</td>'+
+      '<td class="'+(h.net>=0?'val-pos':'val-neg')+' font-bold">'+(h.net>=0?'+':'')+'$'+fN(h.net)+'</td></tr>';
+  }).join('');
+}
+
+function renderAnalytics(){
+  const wr=S.n>0?(S.w/S.n)*100:0;
+  if($('balVal'))$('balVal').textContent='$'+fN(S.bal);
+  if($('pnlVal')){$('pnlVal').textContent=(S.pnl>=0?'+':'')+'$'+fN(S.pnl);$('pnlVal').className='font-bold '+(S.pnl>=0?'val-pos':'val-neg');}
+  if($('wrVal'))$('wrVal').textContent=wr.toFixed(0)+'%';
+  if($('ddVal'))$('ddVal').textContent=curDD().toFixed(1)+'%';
+  if($('advMetrics'))$('advMetrics').innerHTML=
+    '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">Trades</span><b>'+S.n+'</b></div>'+
+    '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">W/L</span><b class="text-emerald-300">'+S.w+' / '+S.l+'</b></div>'+
+    '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">Fees</span><b class="text-rose-400">-$'+fN(S.fees)+'</b></div>'+
+    '<div class="flex justify-between border-b border-purple-500/10 py-1"><span class="text-gray-400">Max DD</span><b class="text-amber-300">'+S.maxDD.toFixed(1)+'%</b></div>';
+  if($('attribTable'))$('attribTable').innerHTML=S.hist.length?
+    S.hist.slice(0,10).map(h=>'<div class="flex justify-between py-1 border-b border-purple-500/10"><span class="text-purple-200">'+h.sym+'</span><span class="text-gray-400 text-[10px]">'+(h.v||'')+' '+(h.regime||'').slice(0,3)+'</span><span class="'+(h.net>=0?'val-pos':'val-neg')+'">'+(h.net>=0?'+':'')+'$'+fN(h.net)+'</span></div>').join('')
+    :'<div class="text-gray-500 text-center py-4">—</div>';
+  drawChart('liveEqCanvas',S.eqHist,S.pnl>=0);
+}
+
+function renderEvoStatus(){
+  const stats=evo.getStats();
+  if($('versionVal'))$('versionVal').textContent=stats.active.toUpperCase();
+  if($('evoVersionTag')){$('evoVersionTag').textContent=stats.active.toUpperCase();$('evoVersionTag').className='version-tag v-'+stats.active;}
+  if($('evoWrAi'))$('evoWrAi').textContent=stats.ai.n>0?(stats.ai.wr*100).toFixed(0)+'%':'—';
+  if($('evoWrMom'))$('evoWrMom').textContent=stats.momentum.n>0?(stats.momentum.wr*100).toFixed(0)+'%':'—';
+  if($('evoWrPat'))$('evoWrPat').textContent=stats.pattern.n>0?(stats.pattern.wr*100).toFixed(0)+'%':'—';
+  if($('evoCapital'))$('evoCapital').textContent='$'+fN(stats.capital);
+  if($('evoTrades'))$('evoTrades').textContent=stats.trades;
+  if($('evoBuffer'))$('evoBuffer').textContent=stats.buffer.n;
+  if($('evoRegime')){$('evoRegime').textContent=currentRegime;$('evoRegime').className='font-mono text-[8px] '+regimeColor(currentRegime);}
+  renderEvoTab(stats);
+}
+
+function renderEvoTab(stats){
+  const vc=$('versionCards');
+  if(vc){
+    const cards=[
+      {key:'ai',name:'🧠 AI Ensemble',cls:'v-ai'},
+      {key:'momentum',name:'📈 Momentum',cls:'v-momentum'},
+      {key:'pattern',name:'🕯 Pattern',cls:'v-pattern'}
+    ];
+    const allElo=Object.values(stats.elo);
+    const minElo=Math.min(...allElo,1200);
+    const maxElo=Math.max(...allElo,1800);
+    const range=maxElo-minElo||1;
+    vc.innerHTML=cards.map(c=>{
+      const s=stats[c.key];
+      const elo=stats.elo[c.key]||1500;
+      const active=stats.active===c.key;
+      const barW=((elo-minElo)/range)*100;
+      const isBest = bestCfg.best && bestCfg.best.version === c.key;
+      return '<div class="inner rounded-lg p-3 '+(active?'ring-2 ring-cyan-400':'')+' '+(isBest?'ring-2 ring-yellow-400':'')+'">'+
+        '<div class="flex justify-between items-center mb-2">'+
+        '<span class="text-[11px] font-bold text-purple-200">'+c.name+'</span>'+
+        (active?'<span class="version-tag '+c.cls+'">ACTIVE</span>':'')+
+        (isBest?'<span class="best-badge">🏆 BEST</span>':'')+
+        '</div>'+
+        '<div class="grid grid-cols-2 gap-2 text-[10px] mb-2">'+
+        '<div><div class="text-gray-500">ELO</div><b class="text-amber-300">'+Math.round(elo)+'</b></div>'+
+        '<div><div class="text-gray-500">Win Rate</div><b class="'+(s.wr>=0.5?'val-pos':'val-neg')+'">'+(s.n>0?(s.wr*100).toFixed(0)+'%':'—')+'</b></div>'+
+        '<div><div class="text-gray-500">Trades</div><b class="text-cyan-300">'+s.n+'</b></div>'+
+        '<div><div class="text-gray-500">Matches</div><b class="text-gray-400">'+(stats.eloMatches[c.key]||0)+'</b></div>'+
+        '</div>'+
+        '<div class="elo-bar" style="width:'+barW+'%"></div></div>';
+    }).join('');
+  }
+  if($('evoM1'))$('evoM1').textContent='$'+fN(stats.capital);
+  if($('evoM2'))$('evoM2').textContent=stats.trades;
+  if($('evoM3'))$('evoM3').textContent=stats.mfeMulti.toFixed(2);
+  if($('evoM4'))$('evoM4').textContent=stats.slMulti.toFixed(2);
+  if($('evoM5'))$('evoM5').textContent=stats.confThr.toFixed(3);
+  if($('evoM6'))$('evoM6').textContent=stats.buffer.n;
+  drawChart('evoEqCanvas',stats.equity&&stats.equity.length>1?stats.equity:[1000],stats.capital>=1000);
+  const j=$('evoJournal');
+  if(j){
+    const entries=(stats.journal||[]).slice(-30).reverse();
+    if(!entries.length){j.innerHTML='<div class="text-gray-500 text-center py-4 text-[10px]">Хоосон</div>';return;}
+    j.innerHTML=entries.map(e=>{
+      const vCls='v-'+(e.version||'ai');
+      const regCls=(e.regime||'').replace('TREND_','T-').slice(0,4);
+      return '<div class="grid grid-cols-7 gap-2 py-1 border-b border-purple-500/10 font-mono text-[10px]">'+
+        '<span class="text-gray-500">'+new Date(e.ts).toLocaleTimeString().slice(0,8)+'</span>'+
+        '<span class="text-purple-200">'+(e.sym||'').replace('USDT','')+'</span>'+
+        '<span><span class="version-tag '+vCls+'">'+(e.version||'').slice(0,3).toUpperCase()+'</span></span>'+
+        '<span class="text-cyan-300">'+regCls+'</span>'+
+        '<span class="'+(e.pnlPct>=0?'val-pos':'val-neg')+'">'+(e.pnlPct>=0?'+':'')+e.pnlPct.toFixed(2)+'%</span>'+
+        '<span class="'+(e.label?'val-pos':'val-neg')+'">'+(e.label?'WIN':'LOSS')+'</span>'+
+        '<span class="text-gray-500">R:'+(e.R>=0?'+':'')+(e.R||0).toFixed(2)+'</span></div>';
+    }).join('');
+  }
+}
+
+function renderBrain(){
+  const lp=evo.lastPrediction;
+  if(!lp){if($('featureList'))$('featureList').innerHTML='<div class="text-gray-500 text-center py-4 col-span-full text-[10px]">Хүлээж байна...</div>';return;}
+  const {feat,ens}=lp;
+  if(ens){
+    const preds=ens.preds||[0,0,0];
+    if($('mlpA_pred'))$('mlpA_pred').textContent=(preds[0]*100).toFixed(1)+'%';
+    if($('mlpB_pred'))$('mlpB_pred').textContent=(preds[1]*100).toFixed(1)+'%';
+    if($('mlpC_pred'))$('mlpC_pred').textContent=(preds[2]*100).toFixed(1)+'%';
+    if($('mlpA_loss'))$('mlpA_loss').textContent=evo.ensemble.models[0]._lastLoss!=null?evo.ensemble.models[0]._lastLoss.toFixed(3):'—';
+    if($('mlpB_loss'))$('mlpB_loss').textContent=evo.ensemble.models[1]._lastLoss!=null?evo.ensemble.models[1]._lastLoss.toFixed(3):'—';
+    if($('mlpC_loss'))$('mlpC_loss').textContent=evo.ensemble.models[2]._lastLoss!=null?evo.ensemble.models[2]._lastLoss.toFixed(3):'—';
+    if($('ensMean'))$('ensMean').textContent=(ens.mean*100).toFixed(1)+'%';
+    if($('ensUnc'))$('ensUnc').textContent=(ens.uncertainty*100).toFixed(2)+'%';
+    if($('ensAgree'))$('ensAgree').textContent=(ens.agreement*100).toFixed(0)+'%';
+  }
+  if($('featureList')){
+    const names=['RSI7','RSI14','RSI21','EMA10','EMA20','BB pos','ATR%','Vol ratio','Signal','HTF bias','Body','Consec','Range mid','Regime'];
+    $('featureList').innerHTML=feat.map((v,i)=>{
+      const cls=v>0.3?'text-emerald-300':v<-0.3?'text-rose-400':'text-gray-400';
+      return '<div class="inner rounded p-1.5"><div class="text-gray-500 text-[9px]">'+names[i]+'</div><b class="'+cls+'">'+v.toFixed(3)+'</b></div>';
+    }).join('');
+  }
+  const buf=evo.buffer.stats();
+  if($('bufferSize'))$('bufferSize').textContent=buf.n;
+  if($('bufferReward'))$('bufferReward').textContent=(buf.avgReward>=0?'+':'')+buf.avgReward.toFixed(2);
+  if($('bufferWR'))$('bufferWR').textContent=(buf.wr*100).toFixed(0)+'%';
+  if($('trainBatches'))$('trainBatches').textContent=evo.trainBatches;
+  if($('trainLoss'))$('trainLoss').textContent=evo.lastLoss!=null?evo.lastLoss.toFixed(4):'—';
+  if($('regimeModels')){
+    const rc=evo.regimeCount||{};
+    const regimes=['TREND_UP','TREND_DOWN','RANGE','VOLATILE','QUIET'];
+    $('regimeModels').innerHTML=regimes.map(r=>{
+      const d=rc[r]||{n:0,w:0};
+      const wr=d.n>0?(d.w/d.n*100).toFixed(0)+'%':'—';
+      const cls=regimeColor(r);
+      return '<div class="flex justify-between items-center">'+
+        '<span class="'+cls+' text-[10px]">'+r+'</span>'+
+        '<span class="text-gray-500 text-[10px]">'+d.n+' trades</span>'+
+        '<b class="'+(d.n>0&&d.w/d.n>=0.5?'val-pos':'val-neg')+' text-[10px]">'+wr+'</b></div>';
+    }).join('');
+  }
+}
+
+// ============ BEST CONFIG UI ============
+function renderBestCfgBar(){
+  const prog = bestCfg.progress(S.n);
+  if($('evalProgressBar')) $('evalProgressBar').style.width = prog.pct + '%';
+  if($('evalProgressTxt')){
+    if(prog.phase === 'warmup'){
+      $('evalProgressTxt').textContent = 'Warming up: '+prog.current+'/'+prog.target+' trades';
+    } else {
+      $('evalProgressTxt').textContent = prog.current+'/'+prog.target+' until eval';
+    }
+  }
+  if($('evalCount')) $('evalCount').textContent = bestCfg.evalCount;
+  if($('bestCount')) $('bestCount').textContent = bestCfg.improveCount;
+  if($('bestScoreVal')){
+    $('bestScoreVal').textContent = bestCfg.best ? bestCfg.best.score.toFixed(3) : '—';
+  }
+  if($('nextEvalVal')){
+    if(S.n < bestCfg.minTrades) $('nextEvalVal').textContent = (bestCfg.minTrades - S.n)+' tr';
+    else {
+      const rem = bestCfg.evalInterval - ((S.n - bestCfg.lastEvalTrade) % bestCfg.evalInterval);
+      $('nextEvalVal').textContent = rem+' tr';
+    }
+  }
+  if($('autoOptBadge')){
+    if(bestCfg.best) $('autoOptBadge').classList.remove('hidden');
+    else $('autoOptBadge').classList.add('hidden');
+  }
+  if($('activeBestCfg')){
+    if(bestCfg.best){
+      const b = bestCfg.best;
+      const ageMin = Math.floor((Date.now() - b.ts) / 60000);
+      $('activeBestCfg').innerHTML =
+        '<div class="flex justify-between"><span class="text-gray-500">Score:</span><b class="text-yellow-300">'+b.score.toFixed(3)+'</b></div>'+
+        '<div class="flex justify-between"><span class="text-gray-500">Version:</span><b class="text-purple-300">'+b.version.toUpperCase()+'</b></div>'+
+        '<div class="flex justify-between"><span class="text-gray-500">Regime:</span><b class="'+regimeColor(b.regime)+'">'+b.regime+'</b></div>'+
+        '<div class="flex justify-between"><span class="text-gray-500">WR:</span><b class="text-emerald-300">'+(b.wr*100).toFixed(1)+'%</b></div>'+
+        '<div class="flex justify-between"><span class="text-gray-500">AvgR:</span><b class="text-cyan-300">'+b.avgR.toFixed(2)+'</b></div>'+
+        '<div class="flex justify-between"><span class="text-gray-500">Sharpe:</span><b class="text-fuchsia-300">'+b.sharpe.toFixed(2)+'</b></div>'+
+        '<div class="flex justify-between"><span class="text-gray-500">conf:</span><b class="text-amber-300">'+b.confThr.toFixed(3)+'</b></div>'+
+        '<div class="flex justify-between"><span class="text-gray-500">MFE×/SL×:</span><b class="text-emerald-300">'+b.mfeMulti.toFixed(2)+'/'+b.slMulti.toFixed(2)+'</b></div>';
+      if($('bestAge')) $('bestAge').textContent = ageMin < 60 ? ageMin+'m ago' : Math.floor(ageMin/60)+'h ago';
+    } else {
+      $('activeBestCfg').innerHTML = '<div class="text-gray-500 text-center py-2 text-[9px]">Warming up...<br>'+S.n+'/'+bestCfg.minTrades+' trades</div>';
+      if($('bestAge')) $('bestAge').textContent = '—';
+    }
+  }
+}
+
+function renderBestCfgTab(){
+  const b = bestCfg.best;
+  if($('bestConfigCard')){
+    if(b){
+      $('bestConfigCard').innerHTML =
+        '<div class="flex items-center gap-3 mb-3">'+
+        '<span class="best-badge text-[11px]">🏆 CHAMPION</span>'+
+        '<span class="version-tag v-'+b.version+'">'+b.version.toUpperCase()+'</span>'+
+        '<span class="regime-tag '+(b.regime==='TREND_UP'?'reg-trend-up':b.regime==='TREND_DOWN'?'reg-trend-down':b.regime==='RANGE'?'reg-range':b.regime==='VOLATILE'?'reg-volatile':'reg-quiet')+'">'+b.regime+'</span>'+
+        '</div>'+
+        '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">'+
+        '<div><div class="text-gray-500">confThr</div><b class="text-amber-300">'+b.confThr.toFixed(4)+'</b></div>'+
+        '<div><div class="text-gray-500">mfeMulti</div><b class="text-emerald-300">'+b.mfeMulti.toFixed(3)+'</b></div>'+
+        '<div><div class="text-gray-500">slMulti</div><b class="text-rose-400">'+b.slMulti.toFixed(3)+'</b></div>'+
+        '<div><div class="text-gray-500">Capital</div><b class="text-white">$'+fN(b.capital)+'</b></div>'+
+        '</div>';
+      if($('bestScore')) $('bestScore').textContent = b.score.toFixed(3);
+      if($('bestWR')) $('bestWR').textContent = (b.wr*100).toFixed(1)+'%';
+      if($('bestAvgR')) $('bestAvgR').textContent = (b.avgR>=0?'+':'')+b.avgR.toFixed(2);
+      if($('bestSharpe')) $('bestSharpe').textContent = b.sharpe.toFixed(2);
+      if($('bestTimestamp')) $('bestTimestamp').textContent = new Date(b.ts).toLocaleString();
+    } else {
+      $('bestConfigCard').innerHTML = '<div class="text-gray-500 text-center py-6 text-[11px]">Хараахан best config бий болоогүй (20+ trade хэрэгтэй)</div>';
+    }
+  }
+  if($('optEvals')) $('optEvals').textContent = bestCfg.evalCount;
+  if($('optImpr')) $('optImpr').textContent = bestCfg.improveCount;
+  if($('optLastScore')) $('optLastScore').textContent = bestCfg.lastScore != null ? bestCfg.lastScore.toFixed(3) : '—';
+  if($('autoApplyStatus')){
+    $('autoApplyStatus').textContent = bestCfg.autoApply ? 'ON' : 'OFF';
+    $('autoApplyStatus').className = bestCfg.autoApply ? 'text-emerald-300' : 'text-rose-400';
+  }
+  if($('historyCount')) $('historyCount').textContent = bestCfg.history.length+' snapshots';
+  if($('bestHistory')){
+    const h = bestCfg.history.slice(-30).reverse();
+    if(!h.length){ $('bestHistory').innerHTML = '<div class="text-gray-500 text-center py-4 text-[10px]">Хоосон</div>'; return; }
+    $('bestHistory').innerHTML = h.map(e=>{
+      const isBest = e.newBest;
+      const regCls = e.regime==='TREND_UP'?'reg-trend-up':e.regime==='TREND_DOWN'?'reg-trend-down':e.regime==='RANGE'?'reg-range':e.regime==='VOLATILE'?'reg-volatile':'reg-quiet';
+      return '<div class="grid grid-cols-8 gap-2 py-1.5 border-b '+(isBest?'border-yellow-500/30 bg-yellow-500/5':'border-purple-500/10')+' font-mono text-[10px] items-center">'+
+        '<span class="text-gray-500">'+new Date(e.ts).toLocaleTimeString().slice(0,8)+'</span>'+
+        '<span>'+(isBest?'<span class="best-badge">🏆 BEST</span>':'<span class="text-gray-600">—</span>')+'</span>'+
+        '<span><span class="version-tag v-'+e.version+'">'+e.version.slice(0,3).toUpperCase()+'</span></span>'+
+        '<span><span class="regime-tag '+regCls+'">'+e.regime.replace('TREND_','T-').slice(0,4)+'</span></span>'+
+        '<b class="'+(isBest?'text-yellow-300':'text-cyan-300')+'">'+e.score.toFixed(3)+'</b>'+
+        '<span class="'+(e.wr>=0.5?'val-pos':'val-neg')+'">'+(e.wr*100).toFixed(0)+'%</span>'+
+        '<span class="'+(e.avgR>=0?'val-pos':'val-neg')+'">'+(e.avgR>=0?'+':'')+e.avgR.toFixed(2)+'</span>'+
+        '<span class="text-fuchsia-300">'+e.sharpe.toFixed(2)+'</span>'+
+        '</div>';
+    }).join('');
+  }
+  if($('scoreCanvas')){
+    const scores = bestCfg.history.map(e=>e.score);
+    if(scores.length > 1){
+      drawChart('scoreCanvas', scores, bestCfg.best && scores[scores.length-1] >= (bestCfg.best.score*0.9));
+    }
+  }
+}
+
+function renderUI(){ renderPos(); renderHist(); renderAnalytics(); renderEvoStatus(); renderBrain(); renderBestCfgBar(); renderBestCfgTab(); }
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(t){
+  ['live','backtest','analytics','evolution','brain','optimizer','checklist'].forEach(id=>{
+    const b=$('tab-'+id), c=$('tab-content-'+id);
+    if(!b||!c) return;
+    if(id===t){b.classList.add('active');c.classList.remove('hidden');}
+    else{b.classList.remove('active');c.classList.add('hidden');}
+  });
+  if(t==='analytics') setTimeout(renderAnalytics,50);
+  if(t==='evolution') setTimeout(renderEvoStatus,50);
+  if(t==='brain') setTimeout(renderBrain,50);
+  if(t==='optimizer') setTimeout(renderBestCfgTab,50);
+  if(t==='live'&&ACTIVE) setTimeout(()=>loadTV(ACTIVE,CFG.tf),100);
+}
+
+function updateCfg(){
+  CFG.tf=$('tfSel').value; CFG.htf=$('htfSel').value;
+  CFG.minScore=parseInt($('scoreSel').value);
+  CFG.riskPct=parseFloat($('riskSel').value);
+  applySpeed($('speedSel').value);
+  if(ACTIVE){selectSym(ACTIVE);loadTV(ACTIVE,CFG.tf);}
+}
+
+// ============================================================
+// EVENTS
+// ============================================================
+function bind(){
+  ['live','backtest','analytics','evolution','brain','optimizer','checklist'].forEach(t=>{const b=$('tab-'+t);if(b)b.addEventListener('click',()=>switchTab(t));});
+  if($('botBtn'))$('botBtn').addEventListener('click',toggleBot);
+  if($('liveBtn'))$('liveBtn').addEventListener('click',()=>{
+    CFG.liveMode=!CFG.liveMode;
+    if($('liveModeTxt'))$('liveModeTxt').textContent=CFG.liveMode?'LIVE':'PAPER';
+    log(CFG.liveMode?'⚠️ LIVE':'📝 PAPER',CFG.liveMode?'text-rose-400':'text-emerald-300');
+  });
+  if($('resetBtn'))$('resetBtn').addEventListener('click',()=>promptConfirm('<i class="fa-solid fa-triangle-exclamation text-rose-400"></i> Reset','Бүх зүйлийг $1,000-д буцаах уу?','Тийм',forceReset));
+  if($('clearLogBtn'))$('clearLogBtn').addEventListener('click',()=>{if($('log'))$('log').innerHTML='';});
+  if($('modalCancelBtn'))$('modalCancelBtn').addEventListener('click',()=>closeModal(false));
+  if($('modalConfirmBtn'))$('modalConfirmBtn').addEventListener('click',()=>closeModal(true));
+  if($('btRunBtn'))$('btRunBtn').addEventListener('click',runBT);
+  if($('evoExportBtn'))$('evoExportBtn').addEventListener('click',()=>{
+    const data=JSON.stringify(evo.serialize(),null,2);
+    const blob=new Blob([data],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='tusam-v3-'+Date.now()+'.json';
+    a.click();URL.revokeObjectURL(url);
+  });
+  if($('brainRetrainBtn'))$('brainRetrainBtn').addEventListener('click',()=>{
+    if(evo.buffer.buf.length<20){log('⚠️ Buffer too small','text-amber-300');return;}
+    log('🔄 Force retrain...','text-fuchsia-300');
+    for(let epoch=0;epoch<100;epoch++){
+      const batch=evo.buffer.sample(CFG.batchSize);
+      batch.forEach(exp=>{const w=1+Math.min(1,Math.abs(exp.reward)/3);evo.ensemble.train(exp.feat,exp.label,w);});
+    }
+    evo.trainBatches+=100;
+    S.evo=evo.serialize();scheduleSave();
+    log('✅ Retrain complete','text-emerald-300');
+    renderBrain();
+  });
+  if($('forceEvalBtn')) $('forceEvalBtn').addEventListener('click',()=>{
+    if(S.n < bestCfg.minTrades){
+      log('⚠️ Need '+bestCfg.minTrades+' trades, currently '+S.n,'text-amber-300');
+      return;
+    }
+    const r = bestCfg.evaluate(evo, S, currentRegime);
+    if(r){
+      if(r.newBest){
+        log('🏆 FORCE EVAL → NEW BEST! Score:'+r.snapshot.score.toFixed(3),'text-yellow-300');
+        if(CFG.autoApplyBest && bestCfg.autoApply) bestCfg.applyBest(evo);
+      } else {
+        log('📊 FORCE EVAL → Score:'+r.snapshot.score.toFixed(3)+' (best:'+bestCfg.best.score.toFixed(3)+')','text-cyan-300');
+      }
+      S.evo=evo.serialize();S.bestCfg=bestCfg.serialize();scheduleSave();
+      renderBestCfgBar();renderBestCfgTab();
+    }
+  });
+  if($('optApplyBtn')) $('optApplyBtn').addEventListener('click',()=>{
+    if(!bestCfg.best){log('⚠️ No best config yet','text-amber-300');return;}
+    bestCfg.applyBest(evo);
+    S.evo=evo.serialize();scheduleSave();
+    log('✅ Best config MANUALLY applied → confThr:'+evo.confThr.toFixed(3)+' MFE×:'+evo.mfeMulti.toFixed(2)+' SL×:'+evo.slMulti.toFixed(2),'text-yellow-300');
+    renderEvoStatus();
+  });
+  if($('optExportBtn')) $('optExportBtn').addEventListener('click',()=>{
+    if(!bestCfg.best){log('⚠️ No best config','text-amber-300');return;}
+    const data=JSON.stringify(bestCfg.serialize(),null,2);
+    const blob=new Blob([data],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='best-config-'+Date.now()+'.json';
+    a.click();URL.revokeObjectURL(url);
+  });
+  ['tfSel','htfSel','scoreSel','riskSel','speedSel'].forEach(id=>{const el=$(id);if(el)el.addEventListener('change',updateCfg);});
+}
+
+// ============================================================
+// INIT
+// ============================================================
+async function init(){
+  try{
+    log('🧬 NEXUS TUSAM v3.0 Auto-Optimize ачаалж байна...','text-purple-300');
+    bind();
+    renderUI();
+    applySpeed($('speedSel')?$('speedSel').value:'fast');
+    await fetchUniverse();
+    if(universe.length){
+      await selectSym(universe[0].sym);
+      if($('autoChartInfo'))$('autoChartInfo').textContent='Loaded: '+universe[0].sym;
+    }
+    setTimeout(()=>scanBatch(),300);
+    if(!scanTimer)scanTimer=setInterval(scanBatch,CFG.intervalMs);
+    setInterval(managePos,2000);
+    setInterval(()=>{S.evo=evo.serialize();S.bestCfg=bestCfg.serialize();scheduleSave();renderBrain();renderBestCfgBar();},15000);
+    log('✅ Бэлэн — Auto-Optimize + Best Config Saver','text-emerald-300');
+    if(bestCfg.best){
+      log('🏆 Loading saved BEST: Score '+bestCfg.best.score.toFixed(3)+
+          ' | WR '+(bestCfg.best.wr*100).toFixed(0)+'%'+
+          ' | Version '+bestCfg.best.version.toUpperCase(),
+          'text-yellow-300');
+    }
+  }catch(e){log('❌ Init: '+e.message,'text-rose-400');}
+}
+
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init);
+else init();
+
+window.addEventListener('beforeunload',()=>{S.evo=evo.serialize();S.bestCfg=bestCfg.serialize();saveState();});
+
+window.switchTab=switchTab;
+window.toggleBot=toggleBot;
+window.closeModal=closeModal;
+window.selectSym=selectSym;
+window.runBT=runBT;
+
+})();
+</script>
+</body>
+</html>
